@@ -30,10 +30,10 @@ class TradingStrategy:
 
     def load_data(self, time_frame):
         file_mapping = {
-            "5m": "aapl_5m_train.csv",
-            "1h": "aapl_1h_train.csv",
-            "1d": "aapl_1d_train.csv",
-            "1m": "aapl_1m_train.csv"
+            "5m": "data/aapl_5m_train.csv",
+            "1h": "data/aapl_1h_train.csv",
+            "1d": "data/aapl_1d_train.csv",
+            "1m": "data/aapl_1m_train.csv"
         }
         file_name = file_mapping.get(time_frame)
         if not file_name:
@@ -45,23 +45,28 @@ class TradingStrategy:
         if indicator_name in self.indicators:
             self.active_indicators.append(indicator_name)
 
-    def rsi_buy_signal(self, row):
+    def rsi_buy_signal(self, row, prev_row=None):
         return row.RSI < 30
 
-    def rsi_sell_signal(self, row):
+    def rsi_sell_signal(self, row, prev_row=None):
         return row.RSI > 70
 
-    def sma_buy_signal(self, row):
+    def sma_buy_signal(self, row, prev_row=None):
         return row.LONG_SMA < row.SHORT_SMA
 
-    def sma_sell_signal(self, row):
+    def sma_sell_signal(self, row, prev_row=None):
         return row.LONG_SMA > row.SHORT_SMA
 
     def macd_buy_signal(self, row, prev_row=None):
-        return prev_row is not None and row.MACD > row.Signal_Line and prev_row.MACD < prev_row.Signal_Line
+        
+        if prev_row is not None:
+            return row.MACD > row.Signal_Line and prev_row.MACD < prev_row.Signal_Line
+        return False  
 
     def macd_sell_signal(self, row, prev_row=None):
-        return prev_row is not None and row.MACD < row.Signal_Line and prev_row.MACD > prev_row.Signal_Line
+        if prev_row is not None:
+            return row.MACD < row.Signal_Line and prev_row.MACD > prev_row.Signal_Line
+        return False  
 
     def execute_trades(self):
         for i, row in self.data.iterrows():
