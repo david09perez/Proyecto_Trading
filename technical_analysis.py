@@ -4,8 +4,6 @@ import ta
 from itertools import combinations
 import optuna
 
-
-
 class Operation:
     def __init__(self, operation_type, bought_at, timestamp, n_shares, stop_loss, take_profit):
         self.operation_type = operation_type
@@ -41,14 +39,12 @@ class TradingStrategy:
         self.best_combination = None
         self.best_value = 0
         
-
     def load_data(self, time_frame):
         file_name = self.file_mapping.get(time_frame)
         if not file_name:
             raise ValueError("Unsupported time frame.")
         self.data = pd.read_csv(file_name)
         self.data.dropna(inplace=True)
-
 
     def calculate_indicators(self):
         rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=14)
@@ -76,7 +72,6 @@ class TradingStrategy:
         
         self.data.dropna(inplace=True)
         self.data.reset_index(drop=True, inplace=True) 
-
 
     def define_buy_sell_signals(self):
         self.indicators = {
@@ -131,8 +126,7 @@ class TradingStrategy:
 
     def adx_sell_signal(self, row, prev_row=None):   
         return prev_row is not None and row['+DI'] < row['-DI'] and row['ADX'] > 25 and prev_row['+DI'] > prev_row['-DI'] 
-    
-    
+        
     def run_signals(self):
         
         for indicator in list(self.indicators.keys()):
@@ -152,8 +146,7 @@ class TradingStrategy:
                 self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.best_combination]].sum(axis=1)
                 total_active_indicators = len(self.best_combination)
             
-            
-        
+                    
         else: #False
             for indicator in self.active_indicators:
                 self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.active_indicators]].sum(axis=1)
@@ -218,6 +211,7 @@ class TradingStrategy:
             return (op.bought_at - current_price) * op.n_shares if not op.closed else 0
 
     def plot_best_results(self):
+        self.reset_strategy()
         self.execute_trades(best=True)
         plt.figure(figsize=(12, 8))
         plt.plot(self.strategy_value)
@@ -248,7 +242,6 @@ class TradingStrategy:
         self.strategy_value = [1_000_000]        
         
    
-
     def optimize_parameters(self):
         def objective(trial):
             self.reset_strategy()
@@ -285,7 +278,7 @@ class TradingStrategy:
             # Ejecutar la estrategia con la mejor combinación y los nuevos parámetros
             self.run_signals()
             self.execute_trades(best= True)
-            print(len(self.strategy_value))
+            #print(len(self.strategy_value))
    
             return self.strategy_value[-1]
     
@@ -339,8 +332,7 @@ class TradingStrategy:
         stoch_indicator = ta.momentum.StochasticOscillator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=k_window, smooth_window=d_window)
         self.data['stoch_%K'] = stoch_indicator.stoch()
         self.data['stoch_%D'] = stoch_indicator.stoch_signal().rolling(window=smoothing).mean()
-            
-        
+                    
     def test(self):
         test_file_mapping = {
             "5m": "data/aapl_5m_test.csv",
@@ -360,8 +352,27 @@ class TradingStrategy:
         plt.ylabel('Strategy Value')
         plt.show()        
     
-    
-    
+    def show_ADX_strat(self):
+        plt.figure(figsize=(12, 8))
+
+        ax1 = plt.subplot(2, 1, 1)
+        ax1.plot(self.data.Close.iloc[:214], label='Close Price')
+        ax1.set_title('Closing Prices and ADX Indicator')
+        ax1.legend()
+
+        ax2 = plt.subplot(2, 1, 2, sharex=ax1)
+        ax2.plot(self.data['ADX'].iloc[:214], label='ADX', color='black')
+        ax2.plot(self.data['+DI'].iloc[:214], label='+DI', color='green')
+        ax2.plot(self.data['-DI'].iloc[:214], label='-DI', color='red')
+
+        ax2.axhline(25, color='gray', linestyle='--', label = 'Trend Strength Threshold')
+
+        ax2.set_title('ADX and Directional Indicators')
+        ax2.legend()
+
+        plt.tight_layout()
+        plt.show()
+
     
     
     
