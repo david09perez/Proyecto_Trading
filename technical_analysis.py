@@ -59,7 +59,12 @@ class TradingStrategy:
         self.data['+DI'] = adx_indicator.adx_pos()
         self.data['-DI'] = adx_indicator.adx_neg()
         
+        stoch_indicator = ta.momentum.StochasticOscillator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=14, smooth_window=3)
+        self.data['stoch_%K'] = stoch_indicator.stoch()
+        self.data['stoch_%D'] = stoch_indicator.stoch_signal()
+        
         self.data.dropna(inplace=True)
+        self.data.reset_index(drop=True, inplace=True) 
 
 
     def define_buy_sell_signals(self):
@@ -68,14 +73,20 @@ class TradingStrategy:
             'SMA': {'buy': self.sma_buy_signal, 'sell': self.sma_sell_signal},
             'MACD': {'buy': self.macd_buy_signal, 'sell': self.macd_sell_signal},
             'SAR' : {'buy': self.sar_buy_signal, 'sell': self.sar_sell_signal},
-            'ADX' : {'buy': self.adx_buy_signal, 'sell': self.adx_sell_signal}
+            'ADX' : {'buy': self.adx_buy_signal, 'sell': self.adx_sell_signal}, 
+            'Stoch': {'buy': self.stoch_buy_signal, 'sell': self.stoch_sell_signal}
         }
 
     def activate_indicator(self, indicator_name):
         if indicator_name in self.indicators:
-            self.active_indicators.append(indicator_name)
-
-
+                self.active_indicators.append(indicator_name)
+                         
+    def stoch_buy_signal(self, row, prev_row=None):
+        return prev_row is not None and prev_row['stoch_%K'] < prev_row['stoch_%D'] and row['stoch_%K'] > row['stoch_%D'] and row['stoch_%K'] < 20
+    
+    def stoch_sell_signal(self, row, prev_row=None):
+        return prev_row is not None and prev_row['stoch_%K'] > prev_row['stoch_%D'] and row['stoch_%K'] < row['stoch_%D'] and row['stoch_%K'] > 80
+    
     def rsi_buy_signal(self, row, prev_row=None):
         return row.RSI < 30
 
@@ -107,52 +118,43 @@ class TradingStrategy:
     def adx_buy_signal(self, row, prev_row=None):
         return prev_row is not None and row['+DI'] > row['-DI'] and row['ADX'] > 25 and prev_row['+DI'] < prev_row['-DI']
 
-    def adx_sell_signal(self, row, prev_row=None):
-        return prev_row is not None and row['+DI'] < row['-DI'] and row['ADX'] > 25 and prev_row['+DI'] > prev_row['-DI']    
+    def adx_sell_signal(self, row, prev_row=None):   
+        return prev_row is not None and row['+DI'] < row['-DI'] and row['ADX'] > 25 and prev_row['+DI'] > prev_row['-DI'] 
+    
+    
+    def run_signals(self):
+        self.calculate_indicators()
+        for indicator in self.active_indicators:
+            self.data[indicator + '_buy_signal'] = self.data.apply(lambda row: self.indicators[indicator]['buy'](row, self.data.iloc[row.name - 1] if row.name > 0 else None), axis=1)
+            self.data[indicator + '_sell_signal'] = self.data.apply(lambda row: self.indicators[indicator]['sell'](row, self.data.iloc[row.name - 1] if row.name > 0 else None), axis=1)
+    
+        # Asegurarse de que las señales de compra y venta se conviertan a valores numéricos (1 para True, 0 para False)
+        for indicator in self.active_indicators:
+            self.data[indicator + '_buy_signal'] = self.data[indicator + '_buy_signal'].astype(int)
+            self.data[indicator + '_sell_signal'] = self.data[indicator + '_sell_signal'].astype(int)
+    
+        # Sumar las señales de compra y venta en nuevas columnas
+        self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.active_indicators]].sum(axis=1)
+        self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.active_indicators]].sum(axis=1)
         
+        return self.data
+
+
     def execute_trades(self):
-        if 'RSI' not in self.data.columns:
-            self.calculate_indicators()
-    
-        # Añadir filas previas desplazadas para las señales que requieran prev_row
-        self.data['prev_Close'] = self.data['Close'].shift(1)
-        self.data['prev_LONG_SMA'] = self.data['LONG_SMA'].shift(1)
-        self.data['prev_SHORT_SMA'] = self.data['SHORT_SMA'].shift(1)
-        self.data['prev_MACD'] = self.data['MACD'].shift(1)
-        self.data['prev_Signal_Line'] = self.data['Signal_Line'].shift(1)
-        self.data['prev_SAR'] = self.data['SAR'].shift(1)
-        self.data['prev_+DI'] = self.data['+DI'].shift(1)
-        self.data['prev_-DI'] = self.data['-DI'].shift(1)
-    
-        # Calcular señales de compra y venta para cada indicador y almacenarlas en el DataFrame
-        self.data['RSI_buy'] = self.data['RSI'] < 30
-        self.data['RSI_sell'] = self.data['RSI'] > 70
-        self.data['SMA_buy'] = (self.data['LONG_SMA'] < self.data['SHORT_SMA']) & (self.data['prev_LONG_SMA'] > self.data['prev_SHORT_SMA'])
-        self.data['SMA_sell'] = (self.data['LONG_SMA'] > self.data['SHORT_SMA']) & (self.data['prev_LONG_SMA'] < self.data['prev_SHORT_SMA'])
-        self.data['MACD_buy'] = (self.data['MACD'] > self.data['Signal_Line']) & (self.data['prev_MACD'] < self.data['prev_Signal_Line'])
-        self.data['MACD_sell'] = (self.data['MACD'] < self.data['Signal_Line']) & (self.data['prev_MACD'] > self.data['prev_Signal_Line'])
-        self.data['SAR_buy'] = (self.data['SAR'] < self.data['Close']) & (self.data['prev_SAR'] > self.data['prev_Close'])
-        self.data['SAR_sell'] = (self.data['SAR'] > self.data['Close']) & (self.data['prev_SAR'] < self.data['prev_Close'])
-        self.data['ADX_buy'] = (self.data['+DI'] > self.data['-DI']) & (self.data['prev_+DI'] < self.data['prev_-DI']) & (self.data['ADX'] > 25)
-        self.data['ADX_sell'] = (self.data['+DI'] < self.data['-DI']) & (self.data['prev_+DI'] > self.data['prev_-DI']) & (self.data['ADX'] > 25)
         
-        self.data.dropna()
-    
         for i, row in self.data.iterrows():
-            buy_signals_count = sum(row[f'{indicator}_buy'] for indicator in self.active_indicators)
-            sell_signals_count = sum(row[f'{indicator}_sell'] for indicator in self.active_indicators)
-            self.data['buy_signals'] = buy_signals_count
-            self.data['sell_signals'] = sell_signals_count
+            
             total_active_indicators = len(self.active_indicators)
+            
             if total_active_indicators <= 2:
-                if buy_signals_count == total_active_indicators:
+                if self.data.total_buy_signals.iloc[i] == total_active_indicators:
                     self._open_operation('long', row)
-                elif sell_signals_count == total_active_indicators:
+                elif self.data.total_sell_signals.iloc[i] == total_active_indicators:
                     self._open_operation('short', row)
             else:
-                if buy_signals_count > total_active_indicators / 2:
+                if self.data.total_buy_signals.iloc[i] > (total_active_indicators / 2):
                     self._open_operation('long', row)
-                elif sell_signals_count > total_active_indicators / 2:
+                elif self.data.total_sell_signals.iloc[i] > (total_active_indicators / 2):
                     self._open_operation('short', row)
     
             # Verifica y cierra operaciones basadas en stop_loss o take_profit
@@ -161,8 +163,6 @@ class TradingStrategy:
         # Actualiza el valor de la estrategia en cada iteración
         total_value = self.cash + sum(self.calculate_operation_value(op, row['Close']) for op in self.operations if not op.closed)
         self.strategy_value.append(total_value)
-        
-        return self.data, self.strategy_value
 
     
         
