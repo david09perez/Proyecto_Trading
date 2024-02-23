@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import ta
 from itertools import combinations
-import Optuna
+import optuna
 
 
 
@@ -32,11 +32,12 @@ class TradingStrategy:
             "1d": "data/aapl_1d_train.csv",
             "1m": "data/aapl_1m_train.csv"
         }
+        self.load_data(self.file)
         self.indicators = {}
         self.active_indicators = []
-        self.load_data(self.file)
         self.calculate_indicators()
         self.define_buy_sell_signals()
+        self.run_signals()
         self.best_combination = None
         self.best_value = 0
         
@@ -134,28 +135,33 @@ class TradingStrategy:
     
     def run_signals(self):
         
-        self.calculate_indicators()
-        for indicator in self.active_indicators:
+        for indicator in list(self.indicators.keys()):
             self.data[indicator + '_buy_signal'] = self.data.apply(lambda row: self.indicators[indicator]['buy'](row, self.data.iloc[row.name - 1] if row.name > 0 else None), axis=1)
             self.data[indicator + '_sell_signal'] = self.data.apply(lambda row: self.indicators[indicator]['sell'](row, self.data.iloc[row.name - 1] if row.name > 0 else None), axis=1)
     
         # Asegurarse de que las señales de compra y venta se conviertan a valores numéricos (1 para True, 0 para False)
-        for indicator in self.active_indicators:
+        for indicator in list(self.indicators.keys()):
             self.data[indicator + '_buy_signal'] = self.data[indicator + '_buy_signal'].astype(int)
             self.data[indicator + '_sell_signal'] = self.data[indicator + '_sell_signal'].astype(int)
-    
-        # Sumar las señales de compra y venta en nuevas columnas
-        self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.active_indicators]].sum(axis=1)
-        self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.active_indicators]].sum(axis=1)
         
-        return self.data
-
-    def execute_trades(self):
+    def execute_trades(self, best = False):
         
+        if best == True:
+            for indicator in self.best_combination:
+                self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.best_combination]].sum(axis=1)
+                self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.best_combination]].sum(axis=1)
+                total_active_indicators = len(self.best_combination)
+            
+            
         
-        self.run_signals()
+        else: #False
+            for indicator in self.active_indicators:
+                self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.active_indicators]].sum(axis=1)
+                self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.active_indicators]].sum(axis=1)
+                total_active_indicators = len(self.active_indicators)
+        
         for i, row in self.data.iterrows():
-            total_active_indicators = len(self.active_indicators)
+            
            
             if total_active_indicators <= 2:
                 if self.data.total_buy_signals.iloc[i] == total_active_indicators:
@@ -176,19 +182,6 @@ class TradingStrategy:
             #print(f"Fila: {i}, Valor de la estrategia: {total_value}")
             self.strategy_value.append(total_value)
         
-        
-    def decide_operation(self, buy_signals_count, sell_signals_count, total_active_indicators):
-        if total_active_indicators <= 2:
-            if buy_signals_count == total_active_indicators:
-                return 'long'
-            elif sell_signals_count == total_active_indicators:
-                return 'short'
-        else:
-            if buy_signals_count > total_active_indicators / 2:
-                return 'long'
-            elif sell_signals_count > total_active_indicators / 2:
-                return 'short'
-        return None
 
     def _open_operation(self, operation_type, row):
         if operation_type == 'long':
@@ -224,7 +217,8 @@ class TradingStrategy:
         else:  # 'short'
             return (op.bought_at - current_price) * op.n_shares if not op.closed else 0
 
-    def plot_results(self):
+    def plot_best_results(self):
+        self.execute_trades(best=True)
         plt.figure(figsize=(12, 8))
         plt.plot(self.strategy_value)
         plt.title('Trading Strategy Performance')
@@ -238,9 +232,8 @@ class TradingStrategy:
             for combo in combinations(all_indicators, r):
                 self.active_indicators = list(combo)
                 print(f"Ejecutando con combinación de indicadores: {self.active_indicators}")
-                self.run_signals()
                 self.execute_trades()
-                # Al final de cada combinación, verifica si el valor final de la estrategia es el mejor hasta ahora
+                
                 final_value = self.strategy_value[-1]
                 if final_value > self.best_value:
                     self.best_value = final_value
@@ -256,85 +249,116 @@ class TradingStrategy:
         
    
 
- #    def optimize_parameters(self):
-#        def objective(trial):
-#            # Configura los parámetros para cada indicador activo en la mejor combinación
-#            for indicator in self.best_combination:
-#                if indicator == 'RSI':
-#                    rsi_window = trial.suggest_int('rsi_window', 5, 30)
-#                    self.set_rsi_parameters(rsi_window)
-#                elif indicator == 'SMA':
-#                    short_ma_window = trial.suggest_int('short_ma_window', 5, 20)
-#                    long_ma_window = trial.suggest_int('long_ma_window', 21, 50)
-#                    self.set_sma_parameters(short_ma_window, long_ma_window)
-#                elif indicator == 'MACD':
-#                    macd_fast = trial.suggest_int('macd_fast', 10, 20)
-#                    macd_slow = trial.suggest_int('macd_slow', 21, 40)
-#                    macd_sign = trial.suggest_int('macd_sign', 5, 15)
-#                    self.set_macd_parameters(macd_fast, macd_slow, macd_sign)
-#                # Agrega configuraciones para otros indicadores aquí
-#                elif indicator == 'SAR':
-#                    sar_step = trial.suggest_float('sar_step', 0.01, 0.1)
-#                    sar_max_step = trial.suggest_float('sar_max_step', 0.1, 0.5)
-#                    self.set_sar_parameters(sar_step, sar_max_step)
-#                
-#                elif indicator == 'ADX':
-#                    adx_window = trial.suggest_int('adx_window', 10, 30)
-#                    self.set_adx_parameters(adx_window)
-#    
-#            # Ejecutar la estrategia con la mejor combinación y los nuevos parámetros
-#            self.run_signals()
-#            self.execute_trades()
-#    
-#            # El objetivo es maximizar el valor final de la estrategia
-#            return self.strategy_value[-1]
-#    
-#        study = optuna.create_study(direction='maximize')
-#        study.optimize(objective, n_trials=100)  # Ajusta el número de pruebas según sea necesario
-#    
-#        # Imprimir y aplicar los mejores parámetros encontrados para cada indicador
-#        print(f"Mejores parámetros encontrados: {study.best_params}")
-#        for indicator in self.best_combination:
-#            if indicator == 'RSI':
-#                self.set_rsi_parameters(study.best_params['rsi_window'])
-#            elif indicator == 'SMA':
-#                self.set_sma_parameters(study.best_params['short_ma_window'], study.best_params['long_ma_window'])
-#            elif indicator == 'MACD':
-#                self.set_macd_parameters(study.best_params['macd_fast'], study.best_params['macd_slow'], study.best_params['macd_sign'])
-#            # Aplica los mejores parámetros para otros indicadores aquí
-#    def set_rsi_parameters(self, window):
-#        rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=window)
-#        self.data['RSI'] = rsi_indicator.rsi()
-#    
-#    def set_sma_parameters(self, short_window, long_window):
-#        short_ma = ta.trend.SMAIndicator(self.data['Close'], window=short_window)
-#        long_ma = ta.trend.SMAIndicator(self.data['Close'], window=long_window)
-#        self.data['SHORT_SMA'] = short_ma.sma_indicator()
-#        self.data['LONG_SMA'] = long_ma.sma_indicator()
-#    
-#    def set_macd_parameters(self, fast, slow, sign):
-#        macd = ta.trend.MACD(close=self.data['Close'], window_slow=slow, window_fast=fast, window_sign=sign)
-#        self.data['MACD'] = macd.macd()
-#        self.data['Signal_Line'] = macd.macd_signal()
-#    
-#    def set_sar_parameters(self, step, max_step):
-#        sar_indicator = ta.trend.PSARIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], step=step, max_step=max_step)
-#        self.data['SAR'] = sar_indicator.psar()
-#    
-#    def set_adx_parameters(self, window):
-#        adx_indicator = ta.trend.ADXIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=window)
-#        self.data['ADX'] = adx_indicator.adx()
-#        self.data['+DI'] = adx_indicator.adx_pos()
-#        self.data['-DI'] = adx_indicator.adx_neg()
-#    
-#    def set_stoch_parameters(self, k_window, d_window, smoothing):
-#        stoch_indicator = ta.momentum.StochasticOscillator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=k_window, smooth_window=d_window)
-#        self.data['stoch_%K'] = stoch_indicator.stoch()
-#        self.data['stoch_%D'] = stoch_indicator.stoch_signal().rolling(window=smoothing).mean()
-        
-        
+    def optimize_parameters(self):
+        def objective(trial):
+            self.reset_strategy()
+            # Configura los parámetros para cada indicador activo en la mejor combinación
+            for indicator in self.best_combination:
+                if indicator == 'RSI':
+                    rsi_window = trial.suggest_int('rsi_window', 5, 30)
+                    self.set_rsi_parameters(rsi_window)
+                elif indicator == 'SMA':
+                    short_ma_window = trial.suggest_int('short_ma_window', 5, 20)
+                    long_ma_window = trial.suggest_int('long_ma_window', 21, 50)
+                    self.set_sma_parameters(short_ma_window, long_ma_window)
+                elif indicator == 'MACD':
+                    macd_fast = trial.suggest_int('macd_fast', 10, 20)
+                    macd_slow = trial.suggest_int('macd_slow', 21, 40)
+                    macd_sign = trial.suggest_int('macd_sign', 5, 15)
+                    self.set_macd_parameters(macd_fast, macd_slow, macd_sign)
+                elif indicator == 'SAR':
+                    sar_step = trial.suggest_float('sar_step', 0.01, 0.1)
+                    sar_max_step = trial.suggest_float('sar_max_step', 0.1, 0.5)
+                    self.set_sar_parameters(sar_step, sar_max_step)
+                
+                elif indicator == 'ADX':
+                    adx_window = trial.suggest_int('adx_window', 10, 30)
+                    self.set_adx_parameters(adx_window)
+                    
+                if indicator == 'Stoch':
+                    stoch_k_window = trial.suggest_int('stoch_k_window', 5, 21) 
+                    stoch_d_window = trial.suggest_int('stoch_d_window', 3, 14)  
+                    stoch_smoothing = trial.suggest_int('stoch_smoothing', 3, 14)  
+                
+                    self.set_stoch_parameters(stoch_k_window, stoch_d_window, stoch_smoothing)
     
+            # Ejecutar la estrategia con la mejor combinación y los nuevos parámetros
+            self.run_signals()
+            self.execute_trades(best= True)
+            print(len(self.strategy_value))
+   
+            return self.strategy_value[-1]
     
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=5)  # Ajusta el número de pruebas según sea necesario
+    
+        # Imprimir y aplicar los mejores parámetros encontrados para cada indicador
+        print(f"Mejores parámetros encontrados: {study.best_params}")
+        for indicator in self.best_combination:
+            
+            if indicator == 'RSI':
+                self.set_rsi_parameters(study.best_params['rsi_window'])
+            elif indicator == 'SMA':
+                self.set_sma_parameters(study.best_params['short_ma_window'], study.best_params['long_ma_window'])
+            elif indicator == 'MACD':
+                self.set_macd_parameters(study.best_params['macd_fast'], study.best_params['macd_slow'], study.best_params['macd_sign'])
+            elif indicator == 'SAR':
+                self.set_sar_parameters(study.best_params['sar_step'], study.best_params['sar_max_step'])
+            elif indicator == 'ADX':
+                self.set_adx_parameters(study.best_params['adx_window'])
+            elif indicator == 'Stoch':
+                self.set_stoch_parameters(study.best_params['stoch_k_window'], study.best_params['stoch_d_window'], study.best_params['stoch_smoothing'])
+                
+            
+    def set_rsi_parameters(self, window):
+        rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=window)
+        self.data['RSI'] = rsi_indicator.rsi()
+    
+    def set_sma_parameters(self, short_window, long_window):
+        short_ma = ta.trend.SMAIndicator(self.data['Close'], window=short_window)
+        long_ma = ta.trend.SMAIndicator(self.data['Close'], window=long_window)
+        self.data['SHORT_SMA'] = short_ma.sma_indicator()
+        self.data['LONG_SMA'] = long_ma.sma_indicator()
+    
+    def set_macd_parameters(self, fast, slow, sign):
+        macd = ta.trend.MACD(close=self.data['Close'], window_slow=slow, window_fast=fast, window_sign=sign)
+        self.data['MACD'] = macd.macd()
+        self.data['Signal_Line'] = macd.macd_signal()            
+    
+    def set_sar_parameters(self, step, max_step):
+        sar_indicator = ta.trend.PSARIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], step=step, max_step=max_step)
+        self.data['SAR'] = sar_indicator.psar()
+    
+    def set_adx_parameters(self, window):
+        adx_indicator = ta.trend.ADXIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=window)
+        self.data['ADX'] = adx_indicator.adx()
+        self.data['+DI'] = adx_indicator.adx_pos()
+        self.data['-DI'] = adx_indicator.adx_neg()
+    
+    def set_stoch_parameters(self, k_window, d_window, smoothing):
+        stoch_indicator = ta.momentum.StochasticOscillator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=k_window, smooth_window=d_window)
+        self.data['stoch_%K'] = stoch_indicator.stoch()
+        self.data['stoch_%D'] = stoch_indicator.stoch_signal().rolling(window=smoothing).mean()
+            
+        
+    def test(self):
+        test_file_mapping = {
+            "5m": "data/aapl_5m_test.csv",
+            "1h": "data/aapl_1h_test.csv",
+            "1d": "data/aapl_1d_test.csv",
+            "1m": "data/aapl_1m_test.csv"
+        }
+        self.load_data(self.file)
+        self.calculate_indicators()
+        self.define_buy_sell_signals()
+        self.run_signals()
+        self.execute_trades(best=True)
+        plt.figure(figsize=(12, 8))
+        plt.plot(self.strategy_value)
+        plt.title('Trading Strategy Performance')
+        plt.xlabel('Number of Trades')
+        plt.ylabel('Strategy Value')
+        plt.show()        
     
     
     
