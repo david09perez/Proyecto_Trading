@@ -135,11 +135,14 @@ class TradingStrategy:
         self.data['SAR_sell'] = (self.data['SAR'] > self.data['Close']) & (self.data['prev_SAR'] < self.data['prev_Close'])
         self.data['ADX_buy'] = (self.data['+DI'] > self.data['-DI']) & (self.data['prev_+DI'] < self.data['prev_-DI']) & (self.data['ADX'] > 25)
         self.data['ADX_sell'] = (self.data['+DI'] < self.data['-DI']) & (self.data['prev_+DI'] > self.data['prev_-DI']) & (self.data['ADX'] > 25)
+        
+        self.data.dropna()
     
         for i, row in self.data.iterrows():
             buy_signals_count = sum(row[f'{indicator}_buy'] for indicator in self.active_indicators)
             sell_signals_count = sum(row[f'{indicator}_sell'] for indicator in self.active_indicators)
-    
+            self.data['buy_signals'] = buy_signals_count
+            self.data['sell_signals'] = sell_signals_count
             total_active_indicators = len(self.active_indicators)
             if total_active_indicators <= 2:
                 if buy_signals_count == total_active_indicators:
