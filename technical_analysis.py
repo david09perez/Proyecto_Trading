@@ -407,7 +407,7 @@ class TradingStrategy:
         plt.plot(self.data.index[:214], self.data['MACD'][:214], label='MACD', color='blue')
 
         # Plot the signal line
-        plt.plot(self.data.index[:214], self.data['Signal line'][:214], label='Signal Line', color='red')
+        plt.plot(self.data.index[:214], self.data['Signal_Line'][:214], label='Signal Line', color='red')
 
         # Add title and legend
         plt.title('MACD and Signal Line')
@@ -415,7 +415,7 @@ class TradingStrategy:
 
         plt.show()
 
-        self.data['MACD_Histogram'] = self.data['MACD'] - self.data['Signal line']
+        self.data['MACD_Histogram'] = self.data['MACD'] - self.data['Signal_Line']
 
         plt.figure(figsize=(12, 6))
 
@@ -470,9 +470,9 @@ class TradingStrategy:
         plt.plot(self.data.index[:250], self.data['Close'][:250], label='Close Price')
 
         # Señales de compra
-        plt.scatter(self.data.index[:250][self.data['Buy_Signal'][:250] == 1], self.data['Close'][:250][self.data['Buy_Signal'][:250] == 1], color='green', marker='^', label='Buy Signal')
+        plt.scatter(self.data.index[:250][self.data['Stoch_buy_signal'][:250] == 1], self.data['Close'][:250][self.data['Stoch_buy_signal'][:250] == 1], color='green', marker='^', label='Buy Signal')
         # Señales de venta
-        plt.scatter(self.data.index[:250][self.data['Sell_Signal'][:250] == 1], self.data['Close'][:250][self.data['Sell_Signal'][:250] == 1], color='red', marker='v', label='Sell Signal')
+        plt.scatter(self.data.index[:250][self.data['Stoch_sell_signal'][:250] == 1], self.data['Close'][:250][self.data['Stoch_sell_signal'][:250] == 1], color='red', marker='v', label='Sell Signal')
 
         plt.title('Stochastic Buy/Sell Signals')
         plt.xlabel('Index')
