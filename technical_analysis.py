@@ -463,17 +463,33 @@ class TradingStrategy:
         plt.title('SAR Indicator with Closing Prices')
         plt.legend()
         plt.show()
+        
+    def plot_stochastic_signals(self):
+        
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.data.index[:250], self.data['Close'][:250], label='Close Price')
+
+        # Señales de compra
+        plt.scatter(self.data.index[:250][self.data['Buy_Signal'][:250] == 1], self.data['Close'][:250][self.data['Buy_Signal'][:250] == 1], color='green', marker='^', label='Buy Signal')
+        # Señales de venta
+        plt.scatter(self.data.index[:250][self.data['Sell_Signal'][:250] == 1], self.data['Close'][:250][self.data['Sell_Signal'][:250] == 1], color='red', marker='v', label='Sell Signal')
+
+        plt.title('Stochastic Buy/Sell Signals')
+        plt.xlabel('Index')
+        plt.ylabel('Price')
+        plt.legend()
+        plt.show()
 
 
 
-    
-    
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
+
+
     
     
     
