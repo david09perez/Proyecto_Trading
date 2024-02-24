@@ -352,6 +352,7 @@ class TradingStrategy:
         plt.ylabel('Strategy Value')
         plt.show()        
     
+    
     def show_ADX_strat(self):
         plt.figure(figsize=(12, 8))
 
@@ -373,23 +374,98 @@ class TradingStrategy:
         plt.tight_layout()
         plt.show()
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
+    def show_RSI(self):
+        fig, axs = plt.subplots(2, 1, figsize=(12, 8))
+
+        axs[0].plot(self.data.Close[:214])
+        axs[0].set_title('Closing Prices')
+
+        axs[1].plot(self.data.RSI[:214])
+        axs[1].plot([0, 214], [70, 70], label="Upper Threshold")
+        axs[1].plot([0, 214], [30, 30], label="Lower Threshold")
+        axs[1].set_title('RSI')
+        axs[1].legend()
+
+        plt.tight_layout()
+        plt.show()
+
+        
+    def show_SMAs(self):
+        plt.figure(figsize=(12, 6))
+        plt.plot(self.data.Close[:250], label='price')
+        plt.plot(self.data.SHORT_SMA[:250], label='SMA(5)')
+        plt.plot(self.data.LONG_SMA[:250], label='SMA(21)')
+        plt.legend()
+        plt.show()
+
+
+
+    def show_MACD(self):
+        plt.figure(figsize=(12, 8))
+
+        # Plot the MACD
+        plt.plot(self.data.index[:214], self.data['MACD'][:214], label='MACD', color='blue')
+
+        # Plot the signal line
+        plt.plot(self.data.index[:214], self.data['Signal line'][:214], label='Signal Line', color='red')
+
+        # Add title and legend
+        plt.title('MACD and Signal Line')
+        plt.legend()
+
+        plt.show()
+
+        self.data['MACD_Histogram'] = self.data['MACD'] - self.data['Signal line']
+
+        plt.figure(figsize=(12, 6))
+
+        # Plot the MACD and the signal line
+        plt.plot(self.data.index, self.data['MACD'], label='MACD', color='blue')
+        plt.plot(self.data.index, self.data['Signal line'], label='Signal Line', color='red')
+
+        # Fill the histogram between MACD and the signal line
+        # We will use a different color depending on whether the histogram is positive or negative
+        plt.bar(self.data.index, self.data['MACD_Histogram'], label='MACD Histogram', color=['green' if val >= 0 else 'red' for val in self.data['MACD_Histogram']])
+
+        # Add title and legend
+        plt.title('MACD, Signal Line, and Histogram')
+        plt.legend()
+        plt.xlim(100, 200)
+        plt.ylim(-1, 1)
+        plt.show()
+        
+        
+        
+    def show_SAR(self):
+        plt.figure(figsize=(12, 8))
+        plt.plot(self.data.Close.iloc[:214], label='Close Price')
+
+        legend_added_buy = False
+        legend_added_sell = False
+
+        for i in range(214):
+            if self.data.SAR.iloc[i] < self.data.Close.iloc[i]:
+                color = 'green'
+                label = 'Buy Order' if not legend_added_buy else None  
+                legend_added_buy = True
+            else:
+                color = 'red'
+                label = 'Sell Order' if not legend_added_sell else None  
+                legend_added_sell = True
+
+            plt.scatter(self.data.index[i], self.data.SAR.iloc[i], color=color, s=20, label=label)
+
+        if not legend_added_buy:
+            plt.scatter([], [], color='green', s=20, label='Buy Order')
+        if not legend_added_sell:
+            plt.scatter([], [], color='red', s=20, label='Sell Order')
+
+        plt.title('SAR Indicator with Closing Prices')
+        plt.legend()
+        plt.show()
+
+
+
     
     
     
