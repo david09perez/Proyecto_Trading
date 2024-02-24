@@ -421,7 +421,7 @@ class TradingStrategy:
 
         # Plot the MACD and the signal line
         plt.plot(self.data.index, self.data['MACD'], label='MACD', color='blue')
-        plt.plot(self.data.index, self.data['Signal line'], label='Signal Line', color='red')
+        plt.plot(self.data.index, self.data['Signal_Line'], label='Signal Line', color='red')
 
         # Fill the histogram between MACD and the signal line
         # We will use a different color depending on whether the histogram is positive or negative
