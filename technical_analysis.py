@@ -27,6 +27,7 @@ class Operation:
             n_shares: The volume of the trade, in terms of how many shares of AAPL are being traded.
             stop_loss: The set price level to exit the trade to minimize losses if the market moves unfavorably
             take_profit: The set price level to exit the trade when the desired price objective is achieved
+            
         """
         
         self.operation_type = operation_type
