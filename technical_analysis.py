@@ -71,6 +71,7 @@ class TradingStrategy:
         self.define_buy_sell_signals()
         self.run_signals()
         self.best_combination = None
+        self.optimize_combination = None
         self.best_value = 0
         
     def load_data(self, time_frame):
@@ -366,6 +367,7 @@ class TradingStrategy:
         combination of indicators found through optimization. The strategy considers the total number of buy or sell
         signals for each row in the dataset and decides whether to open a long or short position based on predefined
         conditions, such as whether the total signals match the number of active indicators or exceed half of them.
+        If no actives indicators when runned, it will take all available indicators
         
         Parameters:
             best: If True, the strategy uses the best combination of indicators for trade execution.
@@ -381,6 +383,10 @@ class TradingStrategy:
             
                     
         else: #False
+            if len(self.active_indicators) == 0:
+                self.active_indicators = list(self.indicators.keys())
+            else:
+                 self.active_indicators = self.active_indicators 
             for indicator in self.active_indicators:
                 self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.active_indicators]].sum(axis=1)
                 self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.active_indicators]].sum(axis=1)
@@ -478,7 +484,7 @@ class TradingStrategy:
         else:  # 'short'
             return (op.bought_at - current_price) * op.n_shares if not op.closed else 0
 
-    def plot_best_results(self):
+    def plot_results(self, best = False):
         
         """
         Resets the strategy and executes trades using the best combination of indicators found through optimization.
@@ -488,7 +494,11 @@ class TradingStrategy:
         """
         
         self.reset_strategy()
-        self.execute_trades(best=True)
+        if best ==  True:
+            self.execute_trades(best=True)
+        else:
+            self.execute_trades()
+            
         plt.figure(figsize=(12, 8))
         plt.plot(self.strategy_value)
         plt.title('Trading Strategy Performance')
@@ -534,7 +544,7 @@ class TradingStrategy:
         self.strategy_value = [1_000_000]        
         
    
-    def optimize_parameters(self):
+    def optimize_parameters(self, prior = False):
         
         """
         Uses an optimization framework Optuna to find the best parameters for each indicator in the best
@@ -560,9 +570,15 @@ class TradingStrategy:
 
             """
             
+            if prior ==True:
+                self.optimize_combination = self.active_indicators
+                
+            else:
+                self.optimize_combination = self.best_combination
+                
             self.reset_strategy()
             # Set the parameters for each active indicator in the best combination
-            for indicator in self.best_combination:
+            for indicator in self.optimize_combination:
                 if indicator == 'RSI':
                     rsi_window = trial.suggest_int('rsi_window', 5, 30)
                     self.set_rsi_parameters(rsi_window)
@@ -590,20 +606,31 @@ class TradingStrategy:
                     stoch_smoothing = trial.suggest_int('stoch_smoothing', 3, 14)  
                 
                     self.set_stoch_parameters(stoch_k_window, stoch_d_window, stoch_smoothing)
+                    
+            take_profit_multiplier = trial.suggest_float('take_profit', 1.01, 1.2)
+            stop_loss_multiplier = trial.suggest_float('stop_loss', 0.87, 0.99)
+            number_of_shares = trial.suggest_int('n_shares', 1, 500)
     
-            # EExecute the strategy with the best combination and new parameters
+            self.take_profit_multiplier = take_profit_multiplier
+            self.stop_loss_multiplier = stop_loss_multiplier
+            self.n_shares = number_of_shares
+            
             self.run_signals()
-            self.execute_trades(best= True)
+            
+            if prior==True:
+                self.execute_trades()
+            else:
+                self.execute_trades(best= True)
             #print(len(self.strategy_value))
    
             return self.strategy_value[-1]
     
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=5)  # Adjust the number of trials as needed
+        study.optimize(objective, n_trials=5)  
     
         # Print and apply the best parameters found for each indicator
         print(f"Mejores parámetros encontrados: {study.best_params}")
-        for indicator in self.best_combination:
+        for indicator in self.optimize_combination:
             
             if indicator == 'RSI':
                 self.set_rsi_parameters(study.best_params['rsi_window'])
@@ -618,6 +645,10 @@ class TradingStrategy:
             elif indicator == 'Stoch':
                 self.set_stoch_parameters(study.best_params['stoch_k_window'], study.best_params['stoch_d_window'], study.best_params['stoch_smoothing'])
                 
+        self.take_profit_multiplier = study.best_params['take_profit']
+        self.stop_loss_multiplier = study.best_params['stop_loss']
+        self.n_shares = study.best_params['n_shares']
+                    
             
     def set_rsi_parameters(self, window):
         
@@ -728,7 +759,7 @@ class TradingStrategy:
         performance over the test period.
 
         """
-        
+        self.reset_strategy()
         test_file_mapping = {
             "5m": "data/aapl_5m_test.csv",
             "1h": "data/aapl_1h_test.csv",
