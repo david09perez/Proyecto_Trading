@@ -483,6 +483,59 @@ class TradingStrategy:
         plt.legend()
         plt.show()
 
+    def rendimiento(data_path, cash=1000000):
+        # Leer el archivo CSV
+        data = pd.read_csv(data_path)
+
+        # Convertir la columna 'Date' a tipo datetime
+        data['Date'] = pd.to_datetime(data['Date'])
+
+        # Obtener el precio de cierre del primer y último dato
+        primer_cierre = data.iloc[0]['Close']
+        ultimo_cierre = data.iloc[-1]['Close']
+
+        # Calcular el rendimiento del activo
+        rend_pasivo = (ultimo_cierre - primer_cierre) / primer_cierre
+        print("El rendimiento del activo desde el primer cierre hasta el último cierre es: {:.2%}".format(rend_pasivo))
+
+        # Comparativa con la estrategia utilizada
+        cashfinal = 1107153.05  # Modifica este valor según lo que obtengas
+        rend_estrategia = (cashfinal - cash) / cash
+        print("El rendimiento de la estrategia desde el primer cierre hasta el último cierre es: {:.2%}".format(rend_estrategia))
+
+        # Ordenar los datos por fecha si no están ordenados
+        data = data.sort_values(by='Date')
+
+        # Graficar el precio de cierre del activo
+        plt.figure(figsize=(12, 8))
+        plt.plot(data['Date'], data['Close'], label='Precio de Cierre', color='blue')
+        plt.title('Precio de Cierre del Activo')
+        plt.xlabel('Fecha')
+        plt.ylabel('Precio de Cierre')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        # Calcular el rendimiento acumulado
+        data['Returns'] = data['Close'].pct_change().fillna(0)
+
+        # Calcular el valor acumulado
+        initial_investment = cash
+        data['Investment_Value'] = (1 + data['Returns']).cumprod() * initial_investment
+
+        # Graficar el rendimiento de la inversión
+        plt.figure(figsize=(12, 8))
+        plt.plot(data['Date'], data['Investment_Value'], label='Valor de la Inversión', color='green')
+        plt.title('Rendimiento de la Inversión')
+        plt.xlabel('Fecha')
+        plt.ylabel('Valor de la Inversión')
+        plt.legend()
+        plt.grid(True)
+        plt.show()
+
+        valor_final = data['Investment_Value'].iloc[-1]
+        print("El valor final de la inversión: ${:,.2f}".format(valor_final))
+
 
 
 
