@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import ta
 from itertools import combinations
 import optuna
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
 
 class Operation:
     def __init__(self, operation_type, bought_at, timestamp, n_shares, stop_loss, take_profit):
@@ -14,6 +17,8 @@ class Operation:
         self.stop_loss = stop_loss
         self.take_profit = take_profit
         self.closed = False
+        
+        return self.data
         
 class TradingStrategy:
     def __init__(self, file):
@@ -34,6 +39,7 @@ class TradingStrategy:
         self.indicators = {}
         self.active_indicators = []
         self.calculate_indicators()
+        self.calculate_features()
         self.define_buy_sell_signals()
         self.run_signals()
         self.best_combination = None
@@ -45,6 +51,25 @@ class TradingStrategy:
             raise ValueError("Unsupported time frame.")
         self.data = pd.read_csv(file_name)
         self.data.dropna(inplace=True)
+        
+    def calculate_features(self):
+        self.data['Returns'] = self.data['Close'].pct_change()
+        self.data['Volatility'] = self.data['Returns'].rolling(window=21).std()
+        
+        def get_slope(series):
+            y = series.values.reshape(-1, 1)
+            X = np.array(range(len(series))).reshape(-1, 1)
+            lin_reg = LinearRegression()
+            lin_reg.fit(X, y)
+            return lin_reg.coef_[0][0]
+
+        self.data['Trend'] = self.data['Close'].rolling(window=21).apply(get_slope, raw=False)       
+        self.data['Spread'] = self.data['High'] - self.data['Low']
+        features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume',  'Volatility', 'Trend', 'Spread']
+        scaler = StandardScaler()
+        self.data[features_to_scale] = scaler.fit_transform(self.data[features_to_scale].fillna(0))
+        self.data.dropna(inplace=True)
+        self.data.reset_index(drop=True, inplace=True)
 
     def calculate_indicators(self):
         rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=14)
@@ -482,63 +507,6 @@ class TradingStrategy:
         plt.ylabel('Price')
         plt.legend()
         plt.show()
-
-   def rendimiento(data_path, cash=1000000):
-        # Leer el archivo CSV
-        data = pd.read_csv(data_path)
-
-        # Convertir la columna 'Date' a tipo datetime
-        data['Date'] = pd.to_datetime(data['Date'])
-
-        # Obtener el precio de cierre del primer y último dato
-        primer_cierre = data.iloc[0]['Close']
-        ultimo_cierre = data.iloc[-1]['Close']
-
-        # Calcular el rendimiento del activo
-        rend_pasivo = (ultimo_cierre - primer_cierre) / primer_cierre
-        print("The passive asset return from the first close to the last close is: {:.2%}".format(rend_pasivo))
-
-        # Comparativa con la estrategia utilizada
-        cashfinal = 1107153.05  # Modifica este valor según lo que obtengas
-        rend_estrategia = (cashfinal - cash) / cash
-        print("The strategy return from the first close to the last close is: {:.2%}".format(rend_estrategia))
-
-        # Ordenar los datos por fecha si no están ordenados
-        data = data.sort_values(by='Date')
-
-        # Graficar el precio de cierre del activo
-        plt.figure(figsize=(12, 8))
-        plt.plot(data['Date'], data['Close'], label='Close Price', color='blue')
-        plt.title('Close Price of the Asset')
-        plt.xlabel('Date')
-        plt.ylabel('Close Price')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-
-        # Calcular el rendimiento acumulado
-        data['Returns'] = data['Close'].pct_change().fillna(0)
-
-        # Calcular el valor acumulado
-        initial_investment = cash
-        data['Investment_Value'] = (1 + data['Returns']).cumprod() * initial_investment
-
-        # Graficar el rendimiento de la inversión
-        plt.figure(figsize=(12, 8))
-        plt.plot(data['Date'], data['Investment_Value'], label='Investment Value', color='green')
-        plt.title('Investment Return')
-        plt.xlabel('Date')
-        plt.ylabel('Investment Value')
-        plt.legend()
-        plt.grid(True)
-        plt.show()
-
-        valor_final = data['Investment_Value'].iloc[-1]
-        print("The final value of the investment: ${:,.2f}".format(valor_final))
-
-
-
-
 
 
 
