@@ -513,16 +513,16 @@ class TradingStrategy:
 
 
         
-class XGBoostClassifier(TradingStrategy):
+class MLModels(TradingStrategy):
     """
-    A class to build and evaluate a classification model using XGBoost.
-    Extends the functionality of the TradingStrategy class to include ML.
+    A class to build and evaluate various machine learning models.
+    Extends the functionality of the TradingStrategy class to include ML capabilities.
     """
 
     def __init__(self, file, k=5, threshold=0.01):
         """
-        Initializes the XGBoostClassifier instance.
-        
+        Initializes the MLModels instance.
+
         :param file: The path to the dataset file.
         :param k: The number of periods to look ahead for setting the target variable.
         :param threshold: The threshold for determining the buy/sell category.
@@ -530,60 +530,45 @@ class XGBoostClassifier(TradingStrategy):
         super().__init__(file)
         self.k = k  # Number of periods forward to check the price
         self.threshold = threshold  # Threshold for determining the category
-        self.model = XGBClassifier(use_label_encoder=False)
         
     def define_target_variable(self):
         """
         Defines the target variable based on future price movement.
         """
-        # Create a 'Future Price' column that contains the price 'k' periods in the future
         self.data['Future Price'] = self.data['Close'].shift(-self.k)
-        
-        # Define the target variable as 1 if the future price is greater than the current price plus the threshold, otherwise 0
         self.data['Target'] = (self.data['Future Price'] > self.data['Close'] * (1 + self.threshold)).astype(int)
-        
-        # Drop rows where the target variable cannot be calculated due to the shift
         self.data.dropna(inplace=True)
     
     def split_data(self):
         """
         Splits the dataset into features (X) and the target variable (y), and then into training and testing sets.
         """
-        # Separate the dataset into features (X) and the target variable (y)
         X = self.data.drop(['Future Price', 'Target'], axis=1)
         y = self.data['Target']
-        
-        # Split the data into training and testing sets
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    def train_model(self):
+
+    def xgboost(self):
         """
-        Trains the XGBoost model using the training data.
+        Trains and evaluates an XGBoost model using the training data.
         """
-        # Train the XGBoost model
+        self.model = XGBClassifier(use_label_encoder=False)
         self.model.fit(self.X_train, self.y_train, eval_metric='logloss')
-    
-    def evaluate_model(self):
-        """
-        Evaluates the model's performance using the test data and prints the F1 Score and classification report.
-        """
-        # Make predictions on the test set
         y_pred = self.model.predict(self.X_test)
-        
-        # Evaluate the model using the F1 Score
-        print("F1 Score:", f1_score(self.y_test, y_pred, average='binary'))
-        
-        # Also provide a detailed classification report
-        print("\nClassification Report:\n", classification_report(self.y_test, y_pred))
+        print("XGBoost F1 Score:", f1_score(self.y_test, y_pred, average='binary'))
+        print("\nXGBoost Classification Report:\n", classification_report(self.y_test, y_pred))
+    
+    # Placeholder for logistic regression model and the other model
+
     
     def run(self):
         """
-        Executes the workflow for defining the target variable, splitting the data, training the model, and evaluating its performance.
+        Executes the workflow for defining the target variable, splitting the data,
+        training models, and evaluating their performance.
         """
         self.define_target_variable()
         self.split_data()
-        self.train_model()
-        self.evaluate_model()
+        self.xgboost()
+        # Call other models here as needed, e.g., self.logistic_regression()
 
 
 
