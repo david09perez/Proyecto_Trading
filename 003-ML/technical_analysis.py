@@ -511,7 +511,6 @@ class TradingStrategy:
         plt.legend()
         plt.show()
 
-
         
 class MLModels(TradingStrategy):
     """
