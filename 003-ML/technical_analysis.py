@@ -5,6 +5,8 @@ from itertools import combinations
 import optuna
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from sklearn.svm import SVC
+from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 
 class Operation:
