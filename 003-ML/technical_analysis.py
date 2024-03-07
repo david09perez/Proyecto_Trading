@@ -41,8 +41,8 @@ class TradingStrategy:
         self.load_data(self.file)
         self.indicators = {}
         self.active_indicators = []
-        self.calculate_indicators()
         self.calculate_features()
+        self.calculate_indicators()
         self.define_buy_sell_signals()
         self.run_signals()
         self.best_combination = None
