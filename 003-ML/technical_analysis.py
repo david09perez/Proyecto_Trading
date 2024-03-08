@@ -125,47 +125,47 @@ class TradingStrategy:
         self.X_train, self.X_test, self.y_train_sell, self.y_test_sell = train_test_split(
             X, y_sell, test_size=test_size, random_state=42)
         
-def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
-        """
-        Train an XGBoost model and find the best hyperparameters.
-        """
-    def objective_xgb(trial):
-        param = {
-            'n_estimators': trial.suggest_int('n_estimators', 50, 400),
-            'max_depth': trial.suggest_int('max_depth', 3, 20),
-            'max_leaves': trial.suggest_int('max_leaves', 0, 64),
-            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
-            'booster': trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart']),
-            'gamma': trial.suggest_float('gamma', 0.0, 5.0),
-            'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 5.0),
-            'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 5.0),
-        }
-        model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
-        model.fit(X_train, y_train)
-        y_pred = model.predict(X_val)
-        score = f1_score(y_val, y_pred, average='binary')
-        return score
+    def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
+            """
+            Train an XGBoost model and find the best hyperparameters.
+            """
+        def objective_xgb(trial):
+            param = {
+                'n_estimators': trial.suggest_int('n_estimators', 50, 400),
+                'max_depth': trial.suggest_int('max_depth', 3, 20),
+                'max_leaves': trial.suggest_int('max_leaves', 0, 64),
+                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+                'booster': trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart']),
+                'gamma': trial.suggest_float('gamma', 0.0, 5.0),
+                'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 5.0),
+                'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 5.0),
+            }
+            model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_val)
+            score = f1_score(y_val, y_pred, average='binary')
+            return score
 
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective_xgb, n_trials=25)  # Adjust the number of trials as necessary
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective_xgb, n_trials=25)  # Adjust the number of trials as necessary
 
-    if direction == 'buy':
-        self.best_xgbuy_params = study.best_params
-    elif direction == 'sell':
-        self.best_xgsell_params = study.best_params
+        if direction == 'buy':
+            self.best_xgbuy_params = study.best_params
+        elif direction == 'sell':
+            self.best_xgsell_params = study.best_params
 
-    best_params = study.best_params
-    best_model = XGBClassifier(**best_params, use_label_encoder=False, eval_metric='logloss')
-    best_model.fit(X_train, y_train)
+        best_params = study.best_params
+        best_model = XGBClassifier(**best_params, use_label_encoder=False, eval_metric='logloss')
+        best_model.fit(X_train, y_train)
 
-    # Generate predictions for the entire dataset
-    X_total = self.data.drop(['Buy_Signal', 'Sell_Signal'], axis=1, errors='ignore')
-    predictions = best_model.predict(X_total)
+        # Generate predictions for the entire dataset
+        X_total = self.data.drop(['Buy_Signal', 'Sell_Signal'], axis=1, errors='ignore')
+        predictions = best_model.predict(X_total)
 
-    if direction == 'buy':
-        self.data['XGBoost_Buy_Signal'] = predictions
-    elif direction == 'sell':
-        self.data['XGBoost_Sell_Signal'] = predictions   
+        if direction == 'buy':
+            self.data['XGBoost_Buy_Signal'] = predictions
+        elif direction == 'sell':
+            self.data['XGBoost_Sell_Signal'] = predictions   
 
 
    
