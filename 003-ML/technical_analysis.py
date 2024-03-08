@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, RobustScaler
 
 
 class Operation:
@@ -41,13 +41,21 @@ class TradingStrategy:
         self.load_data(self.file)
         self.indicators = {}
         self.active_indicators = []
-        self.calculate_features()
         self.calculate_indicators()
+        self.calculate_new_features()
         self.define_buy_sell_signals()
         self.run_signals()
         self.best_combination = None
         self.best_value = 0
-        
+    
+    @staticmethod
+    def get_slope(series):
+        y = series.values.reshape(-1, 1)
+        X = np.array(range(len(series))).reshape(-1, 1)
+        lin_reg = LinearRegression()
+        lin_reg.fit(X, y)
+        return lin_reg.coef_[0][0]
+    
     def load_data(self, time_frame):
         file_name = self.file_mapping.get(time_frame)
         if not file_name:
@@ -55,21 +63,21 @@ class TradingStrategy:
         self.data = pd.read_csv(file_name)
         self.data.dropna(inplace=True)
         
-    def calculate_features(self):
+    def calculate_new_features(self):
         self.data['Returns'] = self.data['Close'].pct_change()
         self.data['Volatility'] = self.data['Returns'].rolling(window=21).std()
         
-        def get_slope(series):
-            y = series.values.reshape(-1, 1)
-            X = np.array(range(len(series))).reshape(-1, 1)
-            lin_reg = LinearRegression()
-            lin_reg.fit(X, y)
-            return lin_reg.coef_[0][0]
-
-        self.data['Trend'] = self.data['Close'].rolling(window=21).apply(get_slope, raw=False)       
+        self.data['Close_Trend'] = self.data['Close'].rolling(window=21).apply(self.get_slope, raw=False)
+        self.data['Volume_Trend'] = self.data['Volume'].rolling(window=21).apply(self.get_slope, raw=False)
         self.data['Spread'] = self.data['High'] - self.data['Low']
-        features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume',  'Volatility', 'Trend', 'Spread']
-        scaler = StandardScaler()
+        self.data['Future_Return_Avg_5'] = self.data['Returns'].shift(-1).rolling(window=5).mean().shift(-4)
+        threshold_buy = self.data['Future_Return_Avg_5'].quantile(0.85) 
+        threshold_sell = self.data['Future_Return_Avg_5'].quantile(0.15)
+        self.data['Buy_Signal'] = (self.data['Future_Return_Avg_5'] > threshold_buy).astype(int)
+        self.data['Sell_Signal'] = (self.data['Future_Return_Avg_5'] < threshold_sell).astype(int)
+        
+        features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume_Trend',  'Volatility', 'Close_Trend', 'Spread']
+        scaler = RobustScaler()
         self.data[features_to_scale] = scaler.fit_transform(self.data[features_to_scale].fillna(0))
         self.data.dropna(inplace=True)
         self.data.reset_index(drop=True, inplace=True)
