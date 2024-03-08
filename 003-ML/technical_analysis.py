@@ -86,6 +86,9 @@ class TradingStrategy:
         
         self.data.reset_index(drop=True, inplace=True)
         
+        
+# Luis & Sofía
+
     def buy_signals(self):
         # Calcular el precio futuro utilizando un desplazamiento de 5 periodos
         self.data['Future_Price'] = self.data['Close'].shift(-5)
@@ -96,6 +99,77 @@ class TradingStrategy:
         # Utilizar el mismo precio futuro calculado para las señales de compra
         # Definir señales de venta: 1 si el precio actual es mayor que el precio futuro, 0 en caso contrario
         self.data['Sell_Signal'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
+        
+    def prepare_data_for_ml(self, test_size=0.2):
+        """
+        Prepares the data for machine learning models, creating training and test sets for buy and sell signals.
+        """
+        # Calculate new features
+        self.calculate_new_features()
+
+        # Define the feature set X using price lags, volatility, returns, and spread
+        features = ['Pt-1', 'Pt-2', 'Pt-3', 'Volatility', 'Returns', 'Spread']
+        X = self.data[features]
+
+        # Define the target variables y for buy and sell signals
+        y_buy = self.data['Buy_Signal']
+        y_sell = self.data['Sell_Signal']
+        
+        # Drop any remaining NaN values that could have arisen from feature engineering
+        self.data.dropna(inplace=True)
+
+        # Split the data into training and test sets
+        self.X_train, self.X_test, self.y_train_buy, self.y_test_buy = train_test_split(
+            X, y_buy, test_size=test_size, random_state=42)
+        
+        self.X_train, self.X_test, self.y_train_sell, self.y_test_sell = train_test_split(
+            X, y_sell, test_size=test_size, random_state=42)
+        
+def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
+        """
+        Train an XGBoost model and find the best hyperparameters.
+        """
+    def objective(trial):
+        param = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 400),
+            'max_depth': trial.suggest_int('max_depth', 3, 20),
+            'max_leaves': trial.suggest_int('max_leaves', 0, 64),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+            'booster': trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart']),
+            'gamma': trial.suggest_float('gamma', 0.0, 5.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 5.0),
+            'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 5.0),
+        }
+        model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_val)
+        score = f1_score(y_val, y_pred, average='binary')
+        return score
+
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=25)  # Adjust the number of trials as necessary
+
+    if direction == 'buy':
+        self.best_xgbuy_params = study.best_params
+    elif direction == 'sell':
+        self.best_xgsell_params = study.best_params
+
+    best_params = study.best_params
+    best_model = XGBClassifier(**best_params, use_label_encoder=False, eval_metric='logloss')
+    best_model.fit(X_train, y_train)
+
+    # Generate predictions for the entire dataset
+    X_total = self.data.drop(['Buy_Signal', 'Sell_Signal'], axis=1, errors='ignore')
+    predictions = best_model.predict(X_total)
+
+    if direction == 'buy':
+        self.data['XGBoost_Buy_Signal'] = predictions
+    elif direction == 'sell':
+        self.data['XGBoost_Sell_Signal'] = predictions   
+
+
+   
+        
 
     def calculate_indicators(self):
         rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=14)
