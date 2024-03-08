@@ -7,7 +7,7 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler, RobustScaler
+from sklearn.model_selection import train_test_split
 
 
 class Operation:
@@ -76,10 +76,10 @@ class TradingStrategy:
         self.data['Buy_Signal'] = (self.data['Future_Return_Avg_5'] > threshold_buy).astype(int)
         self.data['Sell_Signal'] = (self.data['Future_Return_Avg_5'] < threshold_sell).astype(int)
         
-        features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume_Trend',  'Volatility', 'Close_Trend', 'Spread']
-        scaler = RobustScaler()
-        self.data[features_to_scale] = scaler.fit_transform(self.data[features_to_scale].fillna(0))
-        self.data.dropna(inplace=True)
+        #features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume_Trend',  'Volatility', 'Close_Trend', 'Spread']
+        #scaler = RobustScaler()
+        #self.data[features_to_scale] = scaler.fit_transform(self.data[features_to_scale].fillna(0))
+        #self.data.dropna(inplace=True)
         self.data.reset_index(drop=True, inplace=True)
         
     def calculate_indicators(self):
@@ -283,7 +283,7 @@ class TradingStrategy:
    
     def optimize_parameters(self):
         def objective(trial):
-            self.reset_strategy()
+            self.reset_strategy()  
             # Configura los parámetros para cada indicador activo en la mejor combinación
             for indicator in self.best_combination:
                 if indicator == 'RSI':
@@ -559,7 +559,7 @@ class MLModels(TradingStrategy):
         Trains and evaluates an XGBoost model using the training data.
         """
         self.model = XGBClassifier(use_label_encoder=False)
-        self.model.fit(self.X_train, self.y_train, eval_metric='logloss')
+        self.model.fit(self.X_train, self.y_train)
         y_pred = self.model.predict(self.X_test)
         print("XGBoost F1 Score:", f1_score(self.y_test, y_pred, average='binary'))
         print("\nXGBoost Classification Report:\n", classification_report(self.y_test, y_pred))
