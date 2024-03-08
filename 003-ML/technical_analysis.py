@@ -66,7 +66,6 @@ class TradingStrategy:
     def calculate_new_features(self):
         self.data['Returns'] = self.data['Close'].pct_change()
         self.data['Volatility'] = self.data['Returns'].rolling(window=21).std()
-        
         self.data['Close_Trend'] = self.data['Close'].rolling(window=21).apply(self.get_slope, raw=False)
         self.data['Volume_Trend'] = self.data['Volume'].rolling(window=21).apply(self.get_slope, raw=False)
         self.data['Spread'] = self.data['High'] - self.data['Low']
@@ -75,6 +74,10 @@ class TradingStrategy:
         threshold_sell = self.data['Future_Return_Avg_5'].quantile(0.15)
         self.data['Buy_Signal'] = (self.data['Future_Return_Avg_5'] > threshold_buy).astype(int)
         self.data['Sell_Signal'] = (self.data['Future_Return_Avg_5'] < threshold_sell).astype(int)
+        self.data['Pt-1'] = self.data['Close'].shift(-1)
+        self.data['Pt-2'] = self.data['Close'].shift(-2)
+        self.data['Pt-3'] = self.data['Close'].shift(-3)
+        
         
         #features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume_Trend',  'Volatility', 'Close_Trend', 'Spread']
         #scaler = RobustScaler()
