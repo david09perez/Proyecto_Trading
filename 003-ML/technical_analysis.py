@@ -129,7 +129,7 @@ def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
         """
         Train an XGBoost model and find the best hyperparameters.
         """
-    def objective(trial):
+    def objective_xgb(trial):
         param = {
             'n_estimators': trial.suggest_int('n_estimators', 50, 400),
             'max_depth': trial.suggest_int('max_depth', 3, 20),
@@ -147,7 +147,7 @@ def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
         return score
 
     study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=25)  # Adjust the number of trials as necessary
+    study.optimize(objective_xgb, n_trials=25)  # Adjust the number of trials as necessary
 
     if direction == 'buy':
         self.best_xgbuy_params = study.best_params
