@@ -74,17 +74,29 @@ class TradingStrategy:
         threshold_sell = self.data['Future_Return_Avg_5'].quantile(0.15)
         self.data['Buy_Signal'] = (self.data['Future_Return_Avg_5'] > threshold_buy).astype(int)
         self.data['Sell_Signal'] = (self.data['Future_Return_Avg_5'] < threshold_sell).astype(int)
-        self.data['Pt-1'] = self.data['Close'].shift(-1)
-        self.data['Pt-2'] = self.data['Close'].shift(-2)
-        self.data['Pt-3'] = self.data['Close'].shift(-3)
+        self.data['Pt-1'] = self.data['Close'].shift(1)
+        self.data['Pt-2'] = self.data['Close'].shift(2)
+        self.data['Pt-3'] = self.data['Close'].shift(3)
         
         
         #features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume_Trend',  'Volatility', 'Close_Trend', 'Spread']
         #scaler = RobustScaler()
         #self.data[features_to_scale] = scaler.fit_transform(self.data[features_to_scale].fillna(0))
         #self.data.dropna(inplace=True)
+        
         self.data.reset_index(drop=True, inplace=True)
         
+    def buy_signals(self):
+        # Calcular el precio futuro utilizando un desplazamiento de 5 periodos
+        self.data['Future_Price'] = self.data['Close'].shift(-5)
+        # Definir señales de compra: 1 si el precio actual es menor que el precio futuro, 0 en caso contrario
+        self.data['Buy_Signal'] = (self.data['Close'] < self.data['Future_Price']).astype(int)
+
+    def sell_signals(self):
+        # Utilizar el mismo precio futuro calculado para las señales de compra
+        # Definir señales de venta: 1 si el precio actual es mayor que el precio futuro, 0 en caso contrario
+        self.data['Sell_Signal'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
+
     def calculate_indicators(self):
         rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=14)
         self.data['RSI'] = rsi_indicator.rsi()
