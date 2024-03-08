@@ -483,7 +483,7 @@ class TradingStrategy:
         plt.legend()
         plt.show()
 
-   def rendimiento(data_path, cash=1000000):
+    def rendimiento(data_path, cash=1000000):
         # Leer el archivo CSV
         data = pd.read_csv(data_path)
 
