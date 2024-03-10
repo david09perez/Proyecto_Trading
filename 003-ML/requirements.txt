@@ -1,6 +1,8 @@
 Python==3.11.4
-pandas==1.24.3
-matplotlib==3.7.1
+pandas==2.1.4
+matplotlib==3.8.2
 ta==0.11.0
 itertools
 optuna==3.5.0
+scikit-learn'==1.3.0
+xgboost==2.0.3
