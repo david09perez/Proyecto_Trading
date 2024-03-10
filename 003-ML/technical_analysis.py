@@ -169,6 +169,28 @@ class TradingStrategy:
         elif direction == 'sell':
             self.data['XGBoost_Sell_Signal'] = predictions
 
+            
+    #Zata y DArio    
+    
+    def svm(self, X_train, y_train, X_val, y_val):
+        
+        def objective(trial):
+            param = {
+                'C' = trial.suggest_loguniform('C', 1e-6, 1e+6)
+                'kernel' = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid'])
+                'gamma' = trial.suggest_categorical('gamma', ['scale', 'auto'])
+            }    
+        
+            model = SVC(C=C, kernel=kernel, gamma=gamma)
+            model.fit(self.X_train, self.y_train)
+            y_pred = model.predict(self.X_test)
+            score = f1_score(y_val, y_pred, average='binary')
+            return score
+        
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=25)
+        
+            
 
       
             
