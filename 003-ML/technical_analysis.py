@@ -160,35 +160,34 @@ class TradingStrategy:
         best_model.fit(X_train, y_train)
 
         # Generate predictions for the entire dataset
-        X_total = self.X.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], axis=1)
+        X_total = self.X.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], axis=1, errors = 'ignore')
         predictions = best_model.predict(X_total)
 
         # Add predictions back to the dataset
         if direction == 'buy':
-            self.data['XGBoost_Buy_Signal'] = predictions
+            self.data['XGBoost_buy_signal'] = predictions
         elif direction == 'sell':
-            self.data['XGBoost_Sell_Signal'] = predictions
-
-            
+            self.data['XGBoost_sell_signal'] = predictions          
+    
     #Zata y DArio    
     
-    def svm(self, X_train, y_train, X_val, y_val):
+    #def svm(self, X_train, y_train, X_val, y_val):
         
-        def objective(trial):
-            param = {
-                'C' = trial.suggest_loguniform('C', 1e-6, 1e+6)
-                'kernel' = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid'])
-                'gamma' = trial.suggest_categorical('gamma', ['scale', 'auto'])
-            }    
+        #def objective(trial):
+            #param = {
+                #'C' = trial.suggest_loguniform('C', 1e-6, 1e+6)
+                #'kernel' = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid'])
+                #'gamma' = trial.suggest_categorical('gamma', ['scale', 'auto'])
+            #}    
         
-            model = SVC(C=C, kernel=kernel, gamma=gamma)
-            model.fit(self.X_train, self.y_train)
-            y_pred = model.predict(self.X_test)
-            score = f1_score(y_val, y_pred, average='binary')
-            return score
+            #model = SVC(C=C, kernel=kernel, gamma=gamma)
+            #model.fit(self.X_train, self.y_train)
+            #y_pred = model.predict(self.X_test)
+            #score = f1_score(y_val, y_pred, average='binary')
+            #return score
         
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=25)
+        #study = optuna.create_study(direction='maximize')
+        #study.optimize(objective, n_trials=3)
         
             
 
@@ -254,7 +253,8 @@ class TradingStrategy:
     def optimize_and_fit_models(self):
         self.buy_model = self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_buy, self.X_vtest, self.y_vtest_buy, direction='buy')
         self.sell_model = self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_sell, self.X_vtest, self.y_vtest_sell, direction='sell')
-        
+        self.buy_xgb = self.fit_xgboost(direction = 'buy')
+        self.sell_xgb = self.fit_xgboost(direction = 'sell')
  
 
 
@@ -344,7 +344,7 @@ class TradingStrategy:
         plt.show()
         
     def run_combinations(self):
-        all_indicators = ['Logistic']
+        all_indicators = ['Logistic', 'XGBoost'] #FALTA SVM ZATAKONG DARÍO
         for r in range(1, len(all_indicators) + 1):
             for combo in combinations(all_indicators, r):
                 self.active_indicators = list(combo)
