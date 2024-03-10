@@ -103,7 +103,7 @@ class TradingStrategy:
         # Definir señales de venta: 1 si el precio actual es mayor que el precio futuro, 0 en caso contrario
         self.data['Sell_Signal_xgb'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
         
-    def prepare_data_for_ml(self, train_size = 0.8):
+    def prepare_data_for_ml(self, test_size = 0.2):
         """
         Prepares the data for machine learning models, creating training and test sets for buy and sell signals.
         """
@@ -117,20 +117,19 @@ class TradingStrategy:
         y_sell = self.data['Sell_Signal_xgb']
         
 
-        # Determine the cutoff for the test set    
-        cutoff = int(len(X) * train_size)
+        # Determine the cutoff for the test set
+        cutoff = int(len(X) * (1 - test_size))
 
-        # Split the data into training and test sets for buy signals without shuffling
-        self.X_train_buy = X.iloc[:cutoff]
-        self.y_train_buy = y_buy.iloc[:cutoff]
-        self.X_test_buy = X.iloc[cutoff:]
-        self.y_test_buy = y_buy.iloc[cutoff:]
+        # Create a single DataFrame for the training set including both features and targets
+        self.train_df = self.data.iloc[:cutoff].copy()
+        self.train_df['y_buy'] = y_buy.iloc[:cutoff]
+        self.train_df['y_sell'] = y_sell.iloc[:cutoff]
 
-        # Split the data into training and test sets for sell signals without shuffling
-        self.X_train_sell = X.iloc[:cutoff]
-        self.y_train_sell = y_sell.iloc[:cutoff]
-        self.X_test_sell = X.iloc[cutoff:]
-        self.y_test_sell = y_sell.iloc[cutoff:]
+        # Create a single DataFrame for the test set including both features and targets
+        self.test_df = self.data.iloc[cutoff:].copy()
+        self.test_df['y_buy'] = y_buy.iloc[cutoff:]
+        self.test_df['y_sell'] = y_sell.iloc[cutoff:]
+
 
         
     def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
