@@ -115,6 +115,8 @@ class TradingStrategy:
         self.X_test_xgb = self.test_df.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], errors = 'ignore', axis = 1)
         self.Y_test_xgb_buy = self.test_df['Buy_Signal_xgb']
         self.Y_test_xgb_sell = self.test_df['Sell_Signal_xgb']
+        
+ 
 
     def fit_xgboost(self, direction='buy'):
         """
@@ -181,10 +183,11 @@ class TradingStrategy:
         Train an SVM model and find the best hyperparameters.
         """
         # Select the correct training and validation datasets based on the direction
-        X_train = self.X_train_svm
-        y_train = self.Y_train_svm_buy if direction == 'buy' else self.Y_train_svm_sell
-        X_val = self.X_test_svm
-        y_val = self.Y_test_svm_buy if direction == 'buy' else self.Y_test_svm_sell
+        # Select the correct training and validation datasets based on the direction
+        X_train = self.X_train_xgb
+        y_train = self.Y_train_xgb_buy if direction == 'buy' else self.Y_train_xgb_sell
+        X_val = self.X_test_xgb
+        y_val = self.Y_test_xgb_buy if direction == 'buy' else self.Y_test_xgb_sell
 
         def objective_svm(trial):
             
@@ -211,9 +214,11 @@ class TradingStrategy:
         best_params = study.best_params
         best_model = SVC(**best_params)
         best_model.fit(X_train, y_train)
+        
+        
 
         # Generate predictions for the entire dataset
-        X_total = self.X.drop(['Buy_Signal_svm', 'Sell_Signal_svm'], axis=1, errors='ignore')
+        X_total = self.X.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], axis=1, errors='ignore')
         predictions = best_model.predict(X_total)
 
         # Add predictions back to the dataset
@@ -285,6 +290,10 @@ class TradingStrategy:
         self.sell_model = self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_sell, self.X_vtest, self.y_vtest_sell, direction='sell')
         self.buy_xgb = self.fit_xgboost(direction = 'buy')
         self.sell_xgb = self.fit_xgboost(direction = 'sell')
+        
+        self.buy_svm = self.fit_svm(direction = 'buy')
+        self.sell_svm = self.fit_svm(direction = 'sell')
+ 
  
 
 
