@@ -327,7 +327,7 @@ class TradingStrategy:
         plt.show()
         
     def run_combinations(self):
-        all_indicators = list(self.indicators.keys())
+        all_indicators = ['Logistic']
         for r in range(1, len(all_indicators) + 1):
             for combo in combinations(all_indicators, r):
                 self.active_indicators = list(combo)
