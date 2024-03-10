@@ -4,11 +4,11 @@ import ta
 from itertools import combinations
 import optuna
 import numpy as np
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
-
+from sklearn.metrics import f1_score
 
 class Operation:
     def __init__(self, operation_type, bought_at, timestamp, n_shares, stop_loss, take_profit):
@@ -39,14 +39,17 @@ class TradingStrategy:
             "1m": "data/aapl_1m_train.csv"
         }
         self.load_data(self.file)
-        self.indicators = {}
+        
         self.active_indicators = []
-        self.calculate_indicators()
+        
         self.calculate_new_features()
-        self.define_buy_sell_signals()
-        self.run_signals()
+        
+        
         self.best_combination = None
         self.best_value = 0
+        
+        self.best_buylog_params = None
+        self.best_selllog_params = None
     
     @staticmethod
     def get_slope(series):
@@ -65,15 +68,15 @@ class TradingStrategy:
         
     def calculate_new_features(self):
         self.data['Returns'] = self.data['Close'].pct_change()
-        self.data['Volatility'] = self.data['Returns'].rolling(window=21).std()
-        self.data['Close_Trend'] = self.data['Close'].rolling(window=21).apply(self.get_slope, raw=False)
-        self.data['Volume_Trend'] = self.data['Volume'].rolling(window=21).apply(self.get_slope, raw=False)
+        self.data['Volatility'] = self.data['Returns'].rolling(window=10).std()
+        self.data['Close_Trend'] = self.data['Close'].rolling(window=10).apply(self.get_slope, raw=False)
+        self.data['Volume_Trend'] = self.data['Volume'].rolling(window=10).apply(self.get_slope, raw=False)
         self.data['Spread'] = self.data['High'] - self.data['Low']
-        self.data['Future_Return_Avg_5'] = self.data['Returns'].shift(-1).rolling(window=5).mean().shift(-4)
+        self.data['Future_Return_Avg_5'] = self.data['Returns'].shift(-1).rolling(window=10).mean().shift(-9)
         threshold_buy = self.data['Future_Return_Avg_5'].quantile(0.85) 
         threshold_sell = self.data['Future_Return_Avg_5'].quantile(0.15)
-        self.data['Buy_Signal'] = (self.data['Future_Return_Avg_5'] > threshold_buy).astype(int)
-        self.data['Sell_Signal'] = (self.data['Future_Return_Avg_5'] < threshold_sell).astype(int)
+        self.data['LR_Buy_Signal'] = (self.data['Future_Return_Avg_5'] > threshold_buy).astype(int)
+        self.data['LR_Sell_Signal'] = (self.data['Future_Return_Avg_5'] < threshold_sell).astype(int)
         self.data['Pt-1'] = self.data['Close'].shift(1)
         self.data['Pt-2'] = self.data['Close'].shift(2)
         self.data['Pt-3'] = self.data['Close'].shift(3)
@@ -82,7 +85,7 @@ class TradingStrategy:
         #features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume_Trend',  'Volatility', 'Close_Trend', 'Spread']
         #scaler = RobustScaler()
         #self.data[features_to_scale] = scaler.fit_transform(self.data[features_to_scale].fillna(0))
-        #self.data.dropna(inplace=True)
+        self.data.dropna(inplace=True)
         
         self.data.reset_index(drop=True, inplace=True)
         
@@ -126,10 +129,13 @@ class TradingStrategy:
             X, y_sell, test_size=test_size, random_state=42)
         
     def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
-            """
+        
+        """
             Train an XGBoost model and find the best hyperparameters.
-            """
+        """
+        
         def objective_xgb(trial):
+            
             param = {
                 'n_estimators': trial.suggest_int('n_estimators', 50, 400),
                 'max_depth': trial.suggest_int('max_depth', 3, 20),
@@ -168,101 +174,73 @@ class TradingStrategy:
             self.data['XGBoost_Sell_Signal'] = predictions   
 
 
-   
+            
+            
+            
+            
+    def prepare_data_for_log_model(self):
+        relevant_columns = ['Returns', 'Volatility', 'Close_Trend','Volume_Trend', 'Spread',  'LR_Buy_Signal', 'LR_Sell_Signal'] #,'RSI_buy_signal','Volume_Trend',
+       #'RSI_sell_signal', 'SMA_buy_signal', 'SMA_sell_signal','MACD_buy_signal', 'MACD_sell_signal', 'SAR_buy_signal',
+       #'SAR_sell_signal', 'ADX_buy_signal', 'ADX_sell_signal' ,'Spread','Open', 'High', 'Low', 'Close', ]
+        self.processed_data = self.data[relevant_columns]
+        split_idx = int(len(self.processed_data) * 0.75)
+        
+        self.vtrain_data = self.processed_data.iloc[:split_idx]
+        self.X_vtrain = self.vtrain_data.drop(['LR_Buy_Signal', 'LR_Sell_Signal'], errors='ignore', axis=1)
+        self.y_vtrain_buy = self.vtrain_data['LR_Buy_Signal']
+        self.y_vtrain_sell = self.vtrain_data['LR_Sell_Signal']
+        
+        self.vtest_data = self.processed_data.iloc[split_idx:]
+        self.X_vtest = self.vtest_data.drop(['LR_Buy_Signal', 'LR_Sell_Signal'], errors='ignore', axis=1)
+        self.y_vtest_buy = self.vtest_data['LR_Buy_Signal']
+        self.y_vtest_sell = self.vtest_data['LR_Sell_Signal']
+          
+            
+    def fit_logistic_regression(self, X_train, y_train, X_val, y_val, direction='buy'):
+
+        def objective(trial):
+            C = trial.suggest_float('C', 1e-6, 1e+6, log=True)
+            l1_ratio = trial.suggest_float('l1_ratio', 0, 1)
+            fit_intercept = trial.suggest_categorical('fit_intercept', [True, False])
+            
+            model = LogisticRegression(C=C, fit_intercept=fit_intercept, penalty='elasticnet', l1_ratio=l1_ratio, solver='saga', max_iter=10000)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_val)
+            score = f1_score(y_val, y_pred, average='binary')
+            
+            return score
+
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=3) 
+        
+        if direction == 'buy':
+            self.best_buylog_params = study.best_params
+        elif direction == 'sell':
+            self.best_selllog_params = study.best_params
+        
+        best_log_params = study.best_params
+
+        best_model = LogisticRegression(**best_log_params, penalty='elasticnet', solver='saga', max_iter=10_000)
+        best_model.fit(X_train, y_train)
+        signal_columns = ['LR_Buy_Signal', 'LR_Sell_Signal', 'Logistic_Buy_Signal', 'Logistic_Sell_Signal']
+        X_total = self.processed_data.drop(signal_columns, axis=1, errors='ignore') 
+        
+        predictions = best_model.predict(X_total)
+
+        if direction == 'buy':
+            self.data['Logistic_Buy_Signal'] = predictions
+        elif direction == 'sell':
+            self.data['Logistic_Sell_Signal'] = predictions
+
         
 
-    def calculate_indicators(self):
-        rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=14)
-        self.data['RSI'] = rsi_indicator.rsi()
-
-        short_ma = ta.trend.SMAIndicator(self.data['Close'], window=5)
-        long_ma = ta.trend.SMAIndicator(self.data['Close'], window=21)
-        self.data['SHORT_SMA'] = short_ma.sma_indicator()
-        self.data['LONG_SMA'] = long_ma.sma_indicator()
-
-        macd = ta.trend.MACD(close=self.data['Close'], window_slow=26, window_fast=12, window_sign=9)
-        self.data['MACD'] = macd.macd()
-        self.data['Signal_Line'] = macd.macd_signal()
+    def optimize_and_fit_models(self):
+        self.buy_model = self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_buy, self.X_vtest, self.y_vtest_buy, direction='buy')
+        self.sell_model = self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_sell, self.X_vtest, self.y_vtest_sell, direction='sell')
         
-        self.data['SAR'] = ta.trend.PSARIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close']).psar()
-        
-        adx_indicator = ta.trend.ADXIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=14)
-        self.data['ADX'] = adx_indicator.adx()
-        self.data['+DI'] = adx_indicator.adx_pos()
-        self.data['-DI'] = adx_indicator.adx_neg()
-        
-        stoch_indicator = ta.momentum.StochasticOscillator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=14, smooth_window=3)
-        self.data['stoch_%K'] = stoch_indicator.stoch()
-        self.data['stoch_%D'] = stoch_indicator.stoch_signal()
-        
-        self.data.dropna(inplace=True)
-        self.data.reset_index(drop=True, inplace=True) 
+ 
 
-    def define_buy_sell_signals(self):
-        self.indicators = {
-            'RSI': {'buy': self.rsi_buy_signal, 'sell': self.rsi_sell_signal},
-            'SMA': {'buy': self.sma_buy_signal, 'sell': self.sma_sell_signal},
-            'MACD': {'buy': self.macd_buy_signal, 'sell': self.macd_sell_signal},
-            'SAR' : {'buy': self.sar_buy_signal, 'sell': self.sar_sell_signal},
-            'ADX' : {'buy': self.adx_buy_signal, 'sell': self.adx_sell_signal}, 
-            'Stoch': {'buy': self.stoch_buy_signal, 'sell': self.stoch_sell_signal}
-        }
 
-    def activate_indicator(self, indicator_name):
-        if indicator_name in self.indicators:
-                self.active_indicators.append(indicator_name)
-                         
-    def stoch_buy_signal(self, row, prev_row=None):
-        return prev_row is not None and prev_row['stoch_%K'] < prev_row['stoch_%D'] and row['stoch_%K'] > row['stoch_%D'] and row['stoch_%K'] < 20
-    
-    def stoch_sell_signal(self, row, prev_row=None):
-        return prev_row is not None and prev_row['stoch_%K'] > prev_row['stoch_%D'] and row['stoch_%K'] < row['stoch_%D'] and row['stoch_%K'] > 80
-    
-    def rsi_buy_signal(self, row, prev_row=None):
-        return row.RSI < 30
-
-    def rsi_sell_signal(self, row, prev_row=None):
-        return row.RSI > 70
-
-    def sma_buy_signal(self, row, prev_row=None):
-        return prev_row is not None and prev_row['LONG_SMA'] > prev_row['SHORT_SMA'] and row['LONG_SMA'] < row['SHORT_SMA']
-
-    def sma_sell_signal(self, row, prev_row=None):
-        return prev_row is not None and prev_row['LONG_SMA'] < prev_row['SHORT_SMA'] and row['LONG_SMA'] > row['SHORT_SMA']
-
-    def macd_buy_signal(self, row, prev_row=None):
-        if prev_row is not None:
-            return row.MACD > row.Signal_Line and prev_row.MACD < prev_row.Signal_Line
-        return False
-
-    def macd_sell_signal(self, row, prev_row=None):
-        if prev_row is not None:
-            return row.MACD < row.Signal_Line and prev_row.MACD > prev_row.Signal_Line
-        return False
-
-    def sar_buy_signal(self, row, prev_row=None):
-        return prev_row is not None and row['SAR'] < row['Close'] and prev_row['SAR'] > prev_row['Close']
-
-    def sar_sell_signal(self, row, prev_row=None):
-        return prev_row is not None and row['SAR'] > row['Close'] and prev_row['SAR'] < prev_row['Close']
-
-    def adx_buy_signal(self, row, prev_row=None):
-        return prev_row is not None and row['+DI'] > row['-DI'] and row['ADX'] > 25 and prev_row['+DI'] < prev_row['-DI']
-
-    def adx_sell_signal(self, row, prev_row=None):   
-        return prev_row is not None and row['+DI'] < row['-DI'] and row['ADX'] > 25 and prev_row['+DI'] > prev_row['-DI'] 
-        
-    def run_signals(self):
-        
-        for indicator in list(self.indicators.keys()):
-            self.data[indicator + '_buy_signal'] = self.data.apply(lambda row: self.indicators[indicator]['buy'](row, self.data.iloc[row.name - 1] if row.name > 0 else None), axis=1)
-            self.data[indicator + '_sell_signal'] = self.data.apply(lambda row: self.indicators[indicator]['sell'](row, self.data.iloc[row.name - 1] if row.name > 0 else None), axis=1)
-    
-        # Asegurarse de que las señales de compra y venta se conviertan a valores numéricos (1 para True, 0 para False)
-        for indicator in list(self.indicators.keys()):
-            self.data[indicator + '_buy_signal'] = self.data[indicator + '_buy_signal'].astype(int)
-            self.data[indicator + '_sell_signal'] = self.data[indicator + '_sell_signal'].astype(int)
-        
     def execute_trades(self, best = False):
         
         if best == True:
@@ -369,98 +347,7 @@ class TradingStrategy:
         self.cash = 1_000_000
         self.strategy_value = [1_000_000]        
         
-   
-    def optimize_parameters(self):
-        def objective(trial):
-            self.reset_strategy()  
-            # Configura los parámetros para cada indicador activo en la mejor combinación
-            for indicator in self.best_combination:
-                if indicator == 'RSI':
-                    rsi_window = trial.suggest_int('rsi_window', 5, 30)
-                    self.set_rsi_parameters(rsi_window)
-                elif indicator == 'SMA':
-                    short_ma_window = trial.suggest_int('short_ma_window', 5, 20)
-                    long_ma_window = trial.suggest_int('long_ma_window', 21, 50)
-                    self.set_sma_parameters(short_ma_window, long_ma_window)
-                elif indicator == 'MACD':
-                    macd_fast = trial.suggest_int('macd_fast', 10, 20)
-                    macd_slow = trial.suggest_int('macd_slow', 21, 40)
-                    macd_sign = trial.suggest_int('macd_sign', 5, 15)
-                    self.set_macd_parameters(macd_fast, macd_slow, macd_sign)
-                elif indicator == 'SAR':
-                    sar_step = trial.suggest_float('sar_step', 0.01, 0.1)
-                    sar_max_step = trial.suggest_float('sar_max_step', 0.1, 0.5)
-                    self.set_sar_parameters(sar_step, sar_max_step)
-                
-                elif indicator == 'ADX':
-                    adx_window = trial.suggest_int('adx_window', 10, 30)
-                    self.set_adx_parameters(adx_window)
-                    
-                if indicator == 'Stoch':
-                    stoch_k_window = trial.suggest_int('stoch_k_window', 5, 21) 
-                    stoch_d_window = trial.suggest_int('stoch_d_window', 3, 14)  
-                    stoch_smoothing = trial.suggest_int('stoch_smoothing', 3, 14)  
-                
-                    self.set_stoch_parameters(stoch_k_window, stoch_d_window, stoch_smoothing)
-    
-            # Ejecutar la estrategia con la mejor combinación y los nuevos parámetros
-            self.run_signals()
-            self.execute_trades(best= True)
-            #print(len(self.strategy_value))
-   
-            return self.strategy_value[-1]
-    
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=5)  # Ajusta el número de pruebas según sea necesario
-    
-        # Imprimir y aplicar los mejores parámetros encontrados para cada indicador
-        print(f"Mejores parámetros encontrados: {study.best_params}")
-        for indicator in self.best_combination:
-            
-            if indicator == 'RSI':
-                self.set_rsi_parameters(study.best_params['rsi_window'])
-            elif indicator == 'SMA':
-                self.set_sma_parameters(study.best_params['short_ma_window'], study.best_params['long_ma_window'])
-            elif indicator == 'MACD':
-                self.set_macd_parameters(study.best_params['macd_fast'], study.best_params['macd_slow'], study.best_params['macd_sign'])
-            elif indicator == 'SAR':
-                self.set_sar_parameters(study.best_params['sar_step'], study.best_params['sar_max_step'])
-            elif indicator == 'ADX':
-                self.set_adx_parameters(study.best_params['adx_window'])
-            elif indicator == 'Stoch':
-                self.set_stoch_parameters(study.best_params['stoch_k_window'], study.best_params['stoch_d_window'], study.best_params['stoch_smoothing'])
-                
-            
-    def set_rsi_parameters(self, window):
-        rsi_indicator = ta.momentum.RSIIndicator(close=self.data['Close'], window=window)
-        self.data['RSI'] = rsi_indicator.rsi()
-    
-    def set_sma_parameters(self, short_window, long_window):
-        short_ma = ta.trend.SMAIndicator(self.data['Close'], window=short_window)
-        long_ma = ta.trend.SMAIndicator(self.data['Close'], window=long_window)
-        self.data['SHORT_SMA'] = short_ma.sma_indicator()
-        self.data['LONG_SMA'] = long_ma.sma_indicator()
-    
-    def set_macd_parameters(self, fast, slow, sign):
-        macd = ta.trend.MACD(close=self.data['Close'], window_slow=slow, window_fast=fast, window_sign=sign)
-        self.data['MACD'] = macd.macd()
-        self.data['Signal_Line'] = macd.macd_signal()            
-    
-    def set_sar_parameters(self, step, max_step):
-        sar_indicator = ta.trend.PSARIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], step=step, max_step=max_step)
-        self.data['SAR'] = sar_indicator.psar()
-    
-    def set_adx_parameters(self, window):
-        adx_indicator = ta.trend.ADXIndicator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=window)
-        self.data['ADX'] = adx_indicator.adx()
-        self.data['+DI'] = adx_indicator.adx_pos()
-        self.data['-DI'] = adx_indicator.adx_neg()
-    
-    def set_stoch_parameters(self, k_window, d_window, smoothing):
-        stoch_indicator = ta.momentum.StochasticOscillator(high=self.data['High'], low=self.data['Low'], close=self.data['Close'], window=k_window, smooth_window=d_window)
-        self.data['stoch_%K'] = stoch_indicator.stoch()
-        self.data['stoch_%D'] = stoch_indicator.stoch_signal().rolling(window=smoothing).mean()
-                    
+
     def test(self):
         test_file_mapping = {
             "5m": "data/aapl_5m_test.csv",
@@ -480,134 +367,7 @@ class TradingStrategy:
         plt.ylabel('Strategy Value')
         plt.show()        
     
-    
-    def show_ADX_strat(self):
-        plt.figure(figsize=(12, 8))
-
-        ax1 = plt.subplot(2, 1, 1)
-        ax1.plot(self.data.Close.iloc[:214], label='Close Price')
-        ax1.set_title('Closing Prices and ADX Indicator')
-        ax1.legend()
-
-        ax2 = plt.subplot(2, 1, 2, sharex=ax1)
-        ax2.plot(self.data['ADX'].iloc[:214], label='ADX', color='black')
-        ax2.plot(self.data['+DI'].iloc[:214], label='+DI', color='green')
-        ax2.plot(self.data['-DI'].iloc[:214], label='-DI', color='red')
-
-        ax2.axhline(25, color='gray', linestyle='--', label = 'Trend Strength Threshold')
-
-        ax2.set_title('ADX and Directional Indicators')
-        ax2.legend()
-
-        plt.tight_layout()
-        plt.show()
-
-    def show_RSI(self):
-        fig, axs = plt.subplots(2, 1, figsize=(12, 8))
-
-        axs[0].plot(self.data.Close[:214])
-        axs[0].set_title('Closing Prices')
-
-        axs[1].plot(self.data.RSI[:214])
-        axs[1].plot([0, 214], [70, 70], label="Upper Threshold")
-        axs[1].plot([0, 214], [30, 30], label="Lower Threshold")
-        axs[1].set_title('RSI')
-        axs[1].legend()
-
-        plt.tight_layout()
-        plt.show()
-
-        
-    def show_SMAs(self):
-        plt.figure(figsize=(12, 6))
-        plt.plot(self.data.Close[:250], label='price')
-        plt.plot(self.data.SHORT_SMA[:250], label='SMA(5)')
-        plt.plot(self.data.LONG_SMA[:250], label='SMA(21)')
-        plt.legend()
-        plt.show()
-
-
-
-    def show_MACD(self):
-        plt.figure(figsize=(12, 8))
-
-        # Plot the MACD
-        plt.plot(self.data.index[:214], self.data['MACD'][:214], label='MACD', color='blue')
-
-        # Plot the signal line
-        plt.plot(self.data.index[:214], self.data['Signal line'][:214], label='Signal Line', color='red')
-
-        # Add title and legend
-        plt.title('MACD and Signal Line')
-        plt.legend()
-
-        plt.show()
-
-        self.data['MACD_Histogram'] = self.data['MACD'] - self.data['Signal line']
-
-        plt.figure(figsize=(12, 6))
-
-        # Plot the MACD and the signal line
-        plt.plot(self.data.index, self.data['MACD'], label='MACD', color='blue')
-        plt.plot(self.data.index, self.data['Signal_Line'], label='Signal Line', color='red')
-
-        # Fill the histogram between MACD and the signal line
-        # We will use a different color depending on whether the histogram is positive or negative
-        plt.bar(self.data.index, self.data['MACD_Histogram'], label='MACD Histogram', color=['green' if val >= 0 else 'red' for val in self.data['MACD_Histogram']])
-
-        # Add title and legend
-        plt.title('MACD, Signal Line, and Histogram')
-        plt.legend()
-        plt.xlim(100, 200)
-        plt.ylim(-1, 1)
-        plt.show()
-        
-        
-        
-    def show_SAR(self):
-        plt.figure(figsize=(12, 8))
-        plt.plot(self.data.Close.iloc[:214], label='Close Price')
-
-        legend_added_buy = False
-        legend_added_sell = False
-
-        for i in range(214):
-            if self.data.SAR.iloc[i] < self.data.Close.iloc[i]:
-                color = 'green'
-                label = 'Buy Order' if not legend_added_buy else None  
-                legend_added_buy = True
-            else:
-                color = 'red'
-                label = 'Sell Order' if not legend_added_sell else None  
-                legend_added_sell = True
-
-            plt.scatter(self.data.index[i], self.data.SAR.iloc[i], color=color, s=20, label=label)
-
-        if not legend_added_buy:
-            plt.scatter([], [], color='green', s=20, label='Buy Order')
-        if not legend_added_sell:
-            plt.scatter([], [], color='red', s=20, label='Sell Order')
-
-        plt.title('SAR Indicator with Closing Prices')
-        plt.legend()
-        plt.show()
-        
-    def plot_stochastic_signals(self):
-        
-        plt.figure(figsize=(12, 6))
-        plt.plot(self.data.index[:250], self.data['Close'][:250], label='Close Price')
-
-        # Señales de compra
-        plt.scatter(self.data.index[:250][self.data['Buy_Signal'][:250] == 1], self.data['Close'][:250][self.data['Buy_Signal'][:250] == 1], color='green', marker='^', label='Buy Signal')
-        # Señales de venta
-        plt.scatter(self.data.index[:250][self.data['Sell_Signal'][:250] == 1], self.data['Close'][:250][self.data['Sell_Signal'][:250] == 1], color='red', marker='v', label='Sell Signal')
-
-        plt.title('Stochastic Buy/Sell Signals')
-        plt.xlabel('Index')
-        plt.ylabel('Price')
-        plt.legend()
-        plt.show()
-
+ 
         
 class MLModels(TradingStrategy):
     """
