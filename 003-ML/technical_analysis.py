@@ -127,23 +127,23 @@ class TradingStrategy:
         X_val = self.X_test_xgb
         y_val = self.Y_test_xgb_buy if direction == 'buy' else self.Y_test_xgb_sell
 
-            def objective_xgb(trial):
+        def objective_xgb(trial):
                 
-                param = {
-                'n_estimators': trial.suggest_int('n_estimators', 50, 400),
-                'max_depth': trial.suggest_int('max_depth', 3, 20),
-                'max_leaves': trial.suggest_int('max_leaves', 0, 64),
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
-                'booster': trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart']),
-                'gamma': trial.suggest_float('gamma', 0.0, 5.0),
-                'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 5.0),
-                'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 5.0),
-                }
-                model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
-                model.fit(X_train, y_train)
-                y_pred = model.predict(X_val)
-                score = f1_score(y_val, y_pred, average='binary')
-                return score
+            param = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 400),
+            'max_depth': trial.suggest_int('max_depth', 3, 20),
+            'max_leaves': trial.suggest_int('max_leaves', 0, 64),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+            'booster': trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart']),
+            'gamma': trial.suggest_float('gamma', 0.0, 5.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 5.0),
+            'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 5.0),
+            }
+            model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_val)
+            score = f1_score(y_val, y_pred, average='binary')
+            return score
             
         study = optuna.create_study(direction='maximize')
         study.optimize(objective_xgb, n_trials=25)  # Adjust the number of trials as necessary
