@@ -123,10 +123,10 @@ class TradingStrategy:
 
         # Split the data into training and test sets
         self.X_train, self.X_test, self.y_train_buy, self.y_test_buy = train_test_split(
-            X, y_buy, test_size=test_size, random_state=42)
+            X, y_buy, test_size=test_size)
         
         self.X_train, self.X_test, self.y_train_sell, self.y_test_sell = train_test_split(
-            X, y_sell, test_size=test_size, random_state=42)
+            X, y_sell, test_size=test_size)
         
     def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
         
