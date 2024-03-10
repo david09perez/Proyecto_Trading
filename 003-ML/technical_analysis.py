@@ -153,7 +153,7 @@ class TradingStrategy:
             return score
         
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective_xgb, n_trials=3)  # Adjust the number of trials as necessary
+        study.optimize(objective_xgb, n_trials=1)  # Adjust the number of trials as necessary
 
         # Store the best parameters
         if direction == 'buy':
@@ -173,8 +173,10 @@ class TradingStrategy:
         # Add predictions back to the dataset
         if direction == 'buy':
             self.data['XGBoost_buy_signal'] = predictions
+            print(self.data.columns)
         elif direction == 'sell':
-            self.data['XGBoost_sell_signal'] = predictions          
+            self.data['XGBoost_sell_signal'] = predictions  
+            print(self.data.columns)
     
     #Zata y DArio    
     
@@ -202,7 +204,7 @@ class TradingStrategy:
             return score
 
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective_svm, n_trials=3)  # Adjust the number of trials as necessary
+        study.optimize(objective_svm, n_trials=1)  # Adjust the number of trials as necessary
 
         # Store the best parameters
         if direction == 'buy':
@@ -224,8 +226,10 @@ class TradingStrategy:
         # Add predictions back to the dataset
         if direction == 'buy':
             self.data['SVM_buy_signal'] = predictions
+            print(self.data.columns)
         elif direction == 'sell':
             self.data['SVM_sell_signal'] = predictions
+            print(self.data.columns)
 
          
             
@@ -262,7 +266,7 @@ class TradingStrategy:
             return score
 
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=3) 
+        study.optimize(objective, n_trials=1) 
         
         if direction == 'buy':
             self.best_buylog_params = study.best_params
@@ -280,19 +284,23 @@ class TradingStrategy:
 
         if direction == 'buy':
             self.data['Logistic_Buy_Signal'] = predictions
+            print(self.data.columns)
         elif direction == 'sell':
             self.data['Logistic_Sell_Signal'] = predictions
+            print(self.data.columns)
 
         
 
     def optimize_and_fit_models(self):
-        self.buy_model = self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_buy, self.X_vtest, self.y_vtest_buy, direction='buy')
-        self.sell_model = self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_sell, self.X_vtest, self.y_vtest_sell, direction='sell')
-        self.buy_xgb = self.fit_xgboost(direction = 'buy')
-        self.sell_xgb = self.fit_xgboost(direction = 'sell')
         
-        self.buy_svm = self.fit_svm(direction = 'buy')
-        self.sell_svm = self.fit_svm(direction = 'sell')
+        self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_buy, self.X_vtest, self.y_vtest_buy, direction='buy')
+        self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_sell, self.X_vtest, self.y_vtest_sell, direction='sell')
+        
+        self.fit_xgboost(direction = 'buy')
+        self.fit_xgboost(direction = 'sell')
+        
+        self.fit_svm(direction = 'buy')
+        self.fit_svm(direction = 'sell')
  
  
 
