@@ -103,12 +103,10 @@ class TradingStrategy:
         # Definir señales de venta: 1 si el precio actual es mayor que el precio futuro, 0 en caso contrario
         self.data['Sell_Signal_xgb'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
         
-    def prepare_data_for_ml(self, test_size=0.2):
+    def prepare_data_for_ml(self, train_size = 0.8):
         """
         Prepares the data for machine learning models, creating training and test sets for buy and sell signals.
         """
-        # Calculate new features
-        self.calculate_new_features()
 
         # Define the feature set X using price lags, volatility, returns, and spread
         features = ['Pt-1', 'Pt-2', 'Pt-3', 'Volatility', 'Returns', 'Spread']
@@ -118,15 +116,22 @@ class TradingStrategy:
         y_buy = self.data['Buy_Signal_xgb']
         y_sell = self.data['Sell_Signal_xgb']
         
-        # Drop any remaining NaN values that could have arisen from feature engineering
-        self.data.dropna(inplace=True)
 
-        # Split the data into training and test sets
-        self.X_train, self.X_test, self.y_train_buy, self.y_test_buy = train_test_split(
-            X, y_buy, test_size=test_size)
-        
-        self.X_train, self.X_test, self.y_train_sell, self.y_test_sell = train_test_split(
-            X, y_sell, test_size=test_size)
+        # Determine the cutoff for the test set    
+        cutoff = int(len(X) * train_size)
+
+        # Split the data into training and test sets for buy signals without shuffling
+        self.X_train_buy = X.iloc[:cutoff]
+        self.y_train_buy = y_buy.iloc[:cutoff]
+        self.X_test_buy = X.iloc[cutoff:]
+        self.y_test_buy = y_buy.iloc[cutoff:]
+
+        # Split the data into training and test sets for sell signals without shuffling
+        self.X_train_sell = X.iloc[:cutoff]
+        self.y_train_sell = y_sell.iloc[:cutoff]
+        self.X_test_sell = X.iloc[cutoff:]
+        self.y_test_sell = y_sell.iloc[cutoff:]
+
         
     def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
         
