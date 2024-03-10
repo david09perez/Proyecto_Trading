@@ -80,11 +80,10 @@ class TradingStrategy:
         self.data['Pt-1'] = self.data['Close'].shift(1)
         self.data['Pt-2'] = self.data['Close'].shift(2)
         self.data['Pt-3'] = self.data['Close'].shift(3)
+        self.data['Future_Price'] = self.data['Close'].shift(-5)
+        self.data['Buy_Signal_xgb'] = (self.data['Close'] < self.data['Future_Price']).astype(int)
+        self.data['Sell_Signal_xgb'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
         
-        
-        #features_to_scale = ['Open', 'High', 'Low', 'Close', 'Returns', 'Volume_Trend',  'Volatility', 'Close_Trend', 'Spread']
-        #scaler = RobustScaler()
-        #self.data[features_to_scale] = scaler.fit_transform(self.data[features_to_scale].fillna(0))
         self.data.dropna(inplace=True)
         
         self.data.reset_index(drop=True, inplace=True)
@@ -92,44 +91,30 @@ class TradingStrategy:
         
 # Luis & Sofía
 
-    def buy_signals(self):
-        # Calcular el precio futuro utilizando un desplazamiento de 5 periodos
-        self.data['Future_Price'] = self.data['Close'].shift(-5)
-        # Definir señales de compra: 1 si el precio actual es menor que el precio futuro, 0 en caso contrario
-        self.data['Buy_Signal_xgb'] = (self.data['Close'] < self.data['Future_Price']).astype(int)
-
-    def sell_signals(self):
-        # Utilizar el mismo precio futuro calculado para las señales de compra
-        # Definir señales de venta: 1 si el precio actual es mayor que el precio futuro, 0 en caso contrario
-        self.data['Sell_Signal_xgb'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
         
-    def prepare_data_for_ml(self, test_size = 0.2):
+    def prepare_data_for_ml(self, train_size = 0.8):
         """
         Prepares the data for machine learning models, creating training and test sets for buy and sell signals.
         """
 
         # Define the feature set X using price lags, volatility, returns, and spread
-        features = ['Pt-1', 'Pt-2', 'Pt-3', 'Volatility', 'Returns', 'Spread']
-        X = self.data[features]
-
-        # Define the target variables y for buy and sell signals
-        y_buy = self.data['Buy_Signal_xgb']
-        y_sell = self.data['Sell_Signal_xgb']
+        features = ['Pt-1', 'Pt-2', 'Pt-3', 'Volatility', 'Returns', 'Spread', 'Buy_Signal_xgb', 'Sell_Signal_xgb']
+        self.X = self.data[features]
         
-
         # Determine the cutoff for the test set
-        cutoff = int(len(X) * (1 - test_size))
+        cutoff = int(len(self.X) * (train_size))
 
         # Create a single DataFrame for the training set including both features and targets
-        self.train_df = self.data.iloc[:cutoff].copy()
-        self.train_df['y_buy'] = y_buy.iloc[:cutoff]
-        self.train_df['y_sell'] = y_sell.iloc[:cutoff]
+        self.train_df = self.X.iloc[:cutoff]
+        self.X_train_xgb = self.train_df.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], errors = 'ignore', axis = 1)
+        self.Y_train_xgb_buy = self.train_df['Buy_Signal_xgb']
+        self.Y_train_xgb_sell = self.train_df['Sell_Signal_xgb']
 
         # Create a single DataFrame for the test set including both features and targets
-        self.test_df = self.data.iloc[cutoff:].copy()
-        self.test_df['y_buy'] = y_buy.iloc[cutoff:]
-        self.test_df['y_sell'] = y_sell.iloc[cutoff:]
-
+        self.test_df = self.X.iloc[cutoff:]
+        self.X_test_xgb = self.test_df.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], errors = 'ignore', axis = 1)
+        self.Y_test_xgb_buy = self.test_df['Buy_Signal_xgb']
+        self.Y_test_xgb_sell = self.test_df['Sell_Signal_xgb']
 
         
     def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
