@@ -146,7 +146,7 @@ class TradingStrategy:
             return score
             
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective_xgb, n_trials=25)  # Adjust the number of trials as necessary
+        study.optimize(objective_xgb, n_trials=3)  # Adjust the number of trials as necessary
 
         # Store the best parameters
         if direction == 'buy':
