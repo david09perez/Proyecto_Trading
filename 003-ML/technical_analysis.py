@@ -116,16 +116,20 @@ class TradingStrategy:
         self.Y_test_xgb_buy = self.test_df['Buy_Signal_xgb']
         self.Y_test_xgb_sell = self.test_df['Sell_Signal_xgb']
 
-        
-    def fit_xgboost(self, X_train, y_train, X_val, y_val, direction='buy'):
-        
+    def fit_xgboost(self, direction='buy'):
         """
-            Train an XGBoost model and find the best hyperparameters.
+        Train an XGBoost model and find the best hyperparameters.
         """
         
-        def objective_xgb(trial):
-            
-            param = {
+        # Select the correct training and validation datasets based on the direction
+        X_train = self.X_train_xgb
+        y_train = self.Y_train_xgb_buy if direction == 'buy' else self.Y_train_xgb_sell
+        X_val = self.X_test_xgb
+        y_val = self.Y_test_xgb_buy if direction == 'buy' else self.Y_test_xgb_sell
+
+            def objective_xgb(trial):
+                
+                param = {
                 'n_estimators': trial.suggest_int('n_estimators', 50, 400),
                 'max_depth': trial.suggest_int('max_depth', 3, 20),
                 'max_leaves': trial.suggest_int('max_leaves', 0, 64),
@@ -134,37 +138,39 @@ class TradingStrategy:
                 'gamma': trial.suggest_float('gamma', 0.0, 5.0),
                 'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 5.0),
                 'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 5.0),
-            }
-            model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_val)
-            score = f1_score(y_val, y_pred, average='binary')
-            return score
-
+                }
+                model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
+                model.fit(X_train, y_train)
+                y_pred = model.predict(X_val)
+                score = f1_score(y_val, y_pred, average='binary')
+                return score
+            
         study = optuna.create_study(direction='maximize')
         study.optimize(objective_xgb, n_trials=25)  # Adjust the number of trials as necessary
 
+        # Store the best parameters
         if direction == 'buy':
             self.best_xgbuy_params = study.best_params
         elif direction == 'sell':
             self.best_xgsell_params = study.best_params
 
+        # Train the best model on the full training dataset
         best_params = study.best_params
         best_model = XGBClassifier(**best_params, use_label_encoder=False, eval_metric='logloss')
         best_model.fit(X_train, y_train)
 
         # Generate predictions for the entire dataset
-        X_total = self.data.drop(['Buy_Signal', 'Sell_Signal'], axis=1, errors='ignore')
+        X_total = self.X.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], axis=1)
         predictions = best_model.predict(X_total)
 
+        # Add predictions back to the dataset
         if direction == 'buy':
             self.data['XGBoost_Buy_Signal'] = predictions
         elif direction == 'sell':
-            self.data['XGBoost_Sell_Signal'] = predictions   
+            self.data['XGBoost_Sell_Signal'] = predictions
 
 
-            
-            
+      
             
             
     def prepare_data_for_log_model(self):
