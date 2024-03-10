@@ -176,23 +176,51 @@ class TradingStrategy:
     
     #Zata y DArio    
     
-    #def svm(self, X_train, y_train, X_val, y_val):
-        
-        #def objective(trial):
-            #param = {
-                #'C' = trial.suggest_loguniform('C', 1e-6, 1e+6)
-                #'kernel' = trial.suggest_categorical('kernel', ['linear', 'poly', 'rbf', 'sigmoid'])
-                #'gamma' = trial.suggest_categorical('gamma', ['scale', 'auto'])
-            #}    
-        
-            #model = SVC(C=C, kernel=kernel, gamma=gamma)
-            #model.fit(self.X_train, self.y_train)
-            #y_pred = model.predict(self.X_test)
-            #score = f1_score(y_val, y_pred, average='binary')
-            #return score
-        
-        #study = optuna.create_study(direction='maximize')
-        #study.optimize(objective, n_trials=3)
+    def fit_svm(self, direction='buy'):
+    """
+    Train an SVM model and find the best hyperparameters.
+    """
+
+    # Select the correct training and validation datasets based on the direction
+        X_train = self.X_train_svm
+        y_train = self.Y_train_svm_buy if direction == 'buy' else self.Y_train_svm_sell
+        X_val = self.X_test_svm
+        y_val = self.Y_test_svm_buy if direction == 'buy' else self.Y_test_svm_sell
+
+        def objective_svm(trial):
+            C = trial.suggest_float('C', 1e-6, 1e+6, log=True)
+            kernel = trial.suggest_categorical('kernel', ['linear', 'rbf', 'poly'])
+            gamma = 'scale' if kernel == 'linear' else trial.suggest_float('gamma', 1e-6, 1e+1, log=True)
+
+            model = SVC(C=C, kernel=kernel, gamma=gamma)
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_val)
+            score = f1_score(y_val, y_pred, average='binary')
+            return score
+
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective_svm, n_trials=3)  # Adjust the number of trials as necessary
+
+    # Store the best parameters
+    if direction == 'buy':
+        self.best_svmbuy_params = study.best_params
+    elif direction == 'sell':
+        self.best_svmsell_params = study.best_params
+
+    # Train the best model on the full training dataset
+    best_params = study.best_params
+    best_model = SVC(**best_params)
+    best_model.fit(X_train, y_train)
+
+    # Generate predictions for the entire dataset
+    X_total = self.X.drop(['Buy_Signal_svm', 'Sell_Signal_svm'], axis=1, errors='ignore')
+    predictions = best_model.predict(X_total)
+
+    # Add predictions back to the dataset
+    if direction == 'buy':
+        self.data['SVM_buy_signal'] = predictions
+    elif direction == 'sell':
+        self.data['SVM_sell_signal'] = predictions
         
             
 
@@ -349,7 +377,7 @@ class TradingStrategy:
         plt.show()
         
     def run_combinations(self):
-        all_indicators = ['Logistic', 'XGBoost'] #FALTA SVM ZATAKONG DARÍO
+        all_indicators = ['Logistic', 'XGBoost','SVM']
         for r in range(1, len(all_indicators) + 1):
             for combo in combinations(all_indicators, r):
                 self.active_indicators = list(combo)
