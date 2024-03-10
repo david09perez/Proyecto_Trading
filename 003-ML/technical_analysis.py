@@ -96,12 +96,12 @@ class TradingStrategy:
         # Calcular el precio futuro utilizando un desplazamiento de 5 periodos
         self.data['Future_Price'] = self.data['Close'].shift(-5)
         # Definir señales de compra: 1 si el precio actual es menor que el precio futuro, 0 en caso contrario
-        self.data['Buy_Signal'] = (self.data['Close'] < self.data['Future_Price']).astype(int)
+        self.data['Buy_Signal_xgb'] = (self.data['Close'] < self.data['Future_Price']).astype(int)
 
     def sell_signals(self):
         # Utilizar el mismo precio futuro calculado para las señales de compra
         # Definir señales de venta: 1 si el precio actual es mayor que el precio futuro, 0 en caso contrario
-        self.data['Sell_Signal'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
+        self.data['Sell_Signal_xgb'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
         
     def prepare_data_for_ml(self, test_size=0.2):
         """
@@ -115,8 +115,8 @@ class TradingStrategy:
         X = self.data[features]
 
         # Define the target variables y for buy and sell signals
-        y_buy = self.data['Buy_Signal']
-        y_sell = self.data['Sell_Signal']
+        y_buy = self.data['Buy_Signal_xgb']
+        y_sell = self.data['Sell_Signal_xgb']
         
         # Drop any remaining NaN values that could have arisen from feature engineering
         self.data.dropna(inplace=True)
