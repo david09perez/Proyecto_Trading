@@ -20,8 +20,7 @@ class Operation:
         self.stop_loss = stop_loss
         self.take_profit = take_profit
         self.closed = False
-        
-        return self.data
+
         
 class TradingStrategy:
     def __init__(self, file):
@@ -173,10 +172,8 @@ class TradingStrategy:
         # Add predictions back to the dataset
         if direction == 'buy':
             self.data['XGBoost_buy_signal'] = predictions
-            print(self.data.columns)
         elif direction == 'sell':
             self.data['XGBoost_sell_signal'] = predictions  
-            print(self.data.columns)
     
     #Zata y DArio    
     
@@ -226,10 +223,8 @@ class TradingStrategy:
         # Add predictions back to the dataset
         if direction == 'buy':
             self.data['SVM_buy_signal'] = predictions
-            print(self.data.columns)
         elif direction == 'sell':
             self.data['SVM_sell_signal'] = predictions
-            print(self.data.columns)
 
          
             
@@ -283,15 +278,15 @@ class TradingStrategy:
         predictions = best_model.predict(X_total)
 
         if direction == 'buy':
-            self.data['Logistic_Buy_Signal'] = predictions
-            print(self.data.columns)
+            self.data['Logistic_buy_signal'] = predictions
         elif direction == 'sell':
-            self.data['Logistic_Sell_Signal'] = predictions
-            print(self.data.columns)
+            self.data['Logistic_sell_signal'] = predictions
 
         
 
     def optimize_and_fit_models(self):
+        self.prepare_data_for_ml()
+        self.prepare_data_for_log_model()
         
         self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_buy, self.X_vtest, self.y_vtest_buy, direction='buy')
         self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_sell, self.X_vtest, self.y_vtest_sell, direction='sell')
@@ -432,64 +427,7 @@ class TradingStrategy:
         plt.show()        
     
  
-        
-class MLModels(TradingStrategy):
-    """
-    A class to build and evaluate various machine learning models.
-    Extends the functionality of the TradingStrategy class to include ML capabilities.
-    """
-
-    def __init__(self, file, k=5, threshold=0.01):
-        """
-        Initializes the MLModels instance.
-
-        :param file: The path to the dataset file.
-        :param k: The number of periods to look ahead for setting the target variable.
-        :param threshold: The threshold for determining the buy/sell category.
-        """
-        super().__init__(file)
-        self.k = k  # Number of periods forward to check the price
-        self.threshold = threshold  # Threshold for determining the category
-        
-    def define_target_variable(self):
-        """
-        Defines the target variable based on future price movement.
-        """
-        self.data['Future Price'] = self.data['Close'].shift(-self.k)
-        self.data['Target'] = (self.data['Future Price'] > self.data['Close'] * (1 + self.threshold)).astype(int)
-        self.data.dropna(inplace=True)
-    
-    def split_data(self):
-        """
-        Splits the dataset into features (X) and the target variable (y), and then into training and testing sets.
-        """
-        X = self.data.drop(['Future Price', 'Target'], axis=1)
-        y = self.data['Target']
-        self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-    def xgboost(self):
-        """
-        Trains and evaluates an XGBoost model using the training data.
-        """
-        self.model = XGBClassifier(use_label_encoder=False)
-        self.model.fit(self.X_train, self.y_train)
-        y_pred = self.model.predict(self.X_test)
-        print("XGBoost F1 Score:", f1_score(self.y_test, y_pred, average='binary'))
-        print("\nXGBoost Classification Report:\n", classification_report(self.y_test, y_pred))
-    
-    # Placeholder for logistic regression model and the other model
-
-    
-    def run(self):
-        """
-        Executes the workflow for defining the target variable, splitting the data,
-        training models, and evaluating their performance.
-        """
-        self.define_target_variable()
-        self.split_data()
-        self.xgboost()
-        # Call other models here as needed, e.g., self.logistic_regression()
-
+     
 
 
 
