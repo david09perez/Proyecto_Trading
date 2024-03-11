@@ -32,10 +32,10 @@ class TradingStrategy:
         self.n_shares = 10
         self.file = file
         self.file_mapping = {
-            "5m": "data/aapl_5m_train.csv",
-            "1h": "data/aapl_1h_train.csv",
-            "1d": "data/aapl_1d_train.csv",
-            "1m": "data/aapl_1m_train.csv"
+            "5m": "aapl_5m_train.csv",
+            "1h": "aapl_1h_train.csv",
+            "1d": "aapl_1d_train.csv",
+            "1m": "aapl_1m_train.csv"
         }
         self.load_data(self.file)
         
@@ -409,10 +409,10 @@ class TradingStrategy:
 
     def test(self):
         test_file_mapping = {
-            "5m": "data/aapl_5m_test.csv",
-            "1h": "data/aapl_1h_test.csv",
-            "1d": "data/aapl_1d_test.csv",
-            "1m": "data/aapl_1m_test.csv"
+            "5m": "aapl_5m_test.csv",
+            "1h": "aapl_1h_test.csv",
+            "1d": "aapl_1d_test.csv",
+            "1m": "aapl_1m_test.csv"
         }
         self.load_data(self.file)
         self.calculate_indicators()
