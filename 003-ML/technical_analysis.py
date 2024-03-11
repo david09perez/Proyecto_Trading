@@ -46,7 +46,9 @@ class TradingStrategy:
         
         self.best_combination = None
         self.best_value = 0
-        
+        self.stop_loss_pct = 0.95
+        self.take_profit_pct = 1.05
+        self.n_shares = 10        
         self.best_buylog_params = None
         self.best_selllog_params = None
     
@@ -181,8 +183,6 @@ class TradingStrategy:
         """
         Train an SVM model and find the best hyperparameters.
         """
-        # Select the correct training and validation datasets based on the direction
-        # Select the correct training and validation datasets based on the direction
         X_train = self.X_train_xgb
         y_train = self.Y_train_xgb_buy if direction == 'buy' else self.Y_train_xgb_sell
         X_val = self.X_test_xgb
@@ -297,10 +297,12 @@ class TradingStrategy:
         self.fit_svm(direction = 'buy')
         self.fit_svm(direction = 'sell')
  
- 
 
-
-    def execute_trades(self, best = False):
+    def execute_trades(self, best = False, stop_loss=None, take_profit=None, n_shares=None):
+        
+        stop_loss = stop_loss_pct or self.stop_loss
+        take_profit = take_profit_pct or self.take_profit
+        n_shares = n_shares or self.n_shares
         
         if best == True:
             for indicator in self.best_combination:
@@ -320,57 +322,57 @@ class TradingStrategy:
            
             if total_active_indicators <= 2:
                 if self.data.total_buy_signals.iloc[i] == total_active_indicators:
-                    self._open_operation('long', row)
+                    self._open_operation('long', row, stop_loss=stop_loss, take_profit=take_profit, n_shares=n_shares)
                 elif self.data.total_sell_signals.iloc[i] == total_active_indicators:
-                    self._open_operation('short', row)
+                    self._open_operation('short', row, stop_loss=stop_loss, take_profit=take_profit, n_shares=n_shares)
             else:
                 if self.data.total_buy_signals.iloc[i] > (total_active_indicators / 2):
-                    self._open_operation('long', row)
+                    self._open_operation('long', row, stop_loss=stop_loss, take_profit=take_profit, n_shares=n_shares )
                 elif self.data.total_sell_signals.iloc[i] > (total_active_indicators / 2):
-                    self._open_operation('short', row)
+                    self._open_operation('short', row, stop_loss=stop_loss, take_profit=take_profit, n_shares=n_shares)
     
             # Verifica y cierra operaciones basadas en stop_loss o take_profit
-            self.check_close_operations(row)
+            self.check_close_operations(row, stop_loss, take_profit, n_shares)
     
             # Actualiza el valor de la estrategia en cada iteración
-            total_value = self.cash + sum(self.calculate_operation_value(op, row['Close']) for op in self.operations if not op.closed)
+            total_value = self.cash + sum(self.calculate_operation_value(op, row['Close'], n_shares) for op in self.operations if not op.closed)
             #print(f"Fila: {i}, Valor de la estrategia: {total_value}")
             self.strategy_value.append(total_value)
         
 
-    def _open_operation(self, operation_type, row):
+    def _open_operation(self, operation_type, row, stop_loss, take_profit, n_shares):
         if operation_type == 'long':
-            stop_loss = row['Close'] * 0.95
-            take_profit = row['Close'] * 1.05
+            stop_loss = row['Close'] * stop_loss
+            take_profit = row['Close'] * take_profit
         else:  # 'short'
-            stop_loss = row['Close'] * 1.05
-            take_profit = row['Close'] * 0.95
+            stop_loss = row['Close'] * take_profit
+            take_profit = row['Close'] * stop_loss
 
-        self.operations.append(Operation(operation_type, row['Close'], row.name, self.n_shares, stop_loss, take_profit))
+        self.operations.append(Operation(operation_type, row['Close'], row.name, n_shares, stop_loss, take_profit))
         if operation_type == 'long':
-            self.cash -= row['Close'] * self.n_shares * (1 + self.com)
+            self.cash -= row['Close'] * n_shares * (1 + self.com)
         else:  # 'short'
-            self.cash += row['Close'] * self.n_shares * (1 - self.com)  # Incrementa el efectivo al abrir la venta en corto
+            self.cash += row['Close'] * n_shares * (1 - self.com)  # Incrementa el efectivo al abrir la venta en corto
             
         #print(f"Operación {operation_type} iniciada en {row.name}, Precio: {row['Close']}, Cash restante: {self.cash}")
 
-    def check_close_operations(self, row):
+    def check_close_operations(self, row,stop_loss, take_profit, n_shares):
         for op in self.operations:
-            if not op.closed and ((op.operation_type == 'long' and (row['Close'] >= op.take_profit or row['Close'] <= op.stop_loss)) or
-                                  (op.operation_type == 'short' and (row['Close'] <= op.take_profit or row['Close'] >= op.stop_loss))):
+            if not op.closed and ((op.operation_type == 'long' and (row['Close'] >= take_profit or row['Close'] <= stop_loss)) or
+                                  (op.operation_type == 'short' and (row['Close'] <= take_profit or row['Close'] >= stop_loss))):
                 if op.operation_type == 'long':
-                    self.cash += row['Close'] * op.n_shares * (1 - self.com)
+                    self.cash += row['Close'] * n_shares * (1 - self.com)
                 else:  # 'short'
-                    self.cash -= row['Close'] * op.n_shares * (1 + self.com)  # Decrementa el efectivo al cerrar la venta en corto, basado en el nuevo precio
+                    self.cash -= row['Close'] * n_shares * (1 + self.com)  # Decrementa el efectivo al cerrar la venta en corto, basado en el nuevo precio
                    
                 op.closed = True
                 #print(f"Operación {op.operation_type} cerrada en {row.name}, Precio: {row['Close']}, Cash resultante: {self.cash}")
 
-    def calculate_operation_value(self, op, current_price):
+    def calculate_operation_value(self, op, current_price, n_shares):
         if op.operation_type == 'long':
-            return (current_price - op.bought_at) * op.n_shares if not op.closed else 0
+            return (current_price - op.bought_at) * n_shares if not op.closed else 0
         else:  # 'short'
-            return (op.bought_at - current_price) * op.n_shares if not op.closed else 0
+            return (op.bought_at - current_price) * n_shares if not op.closed else 0
 
     def plot_results(self, best = False):
         self.reset_strategy()
@@ -404,8 +406,32 @@ class TradingStrategy:
     def reset_strategy(self):
         self.operations.clear()
         self.cash = 1_000_000
-        self.strategy_value = [1_000_000]        
+        self.strategy_value = [1_000_000]    
         
+        
+    def optimize_trade_parameters(self):
+        def objective(trial):
+            stop_loss_pct = trial.suggest_float('stop_loss_pct', 0.90, 0.99)  
+            take_profit_pct = trial.suggest_float('take_profit_pct', 1.01, 1.10) 
+            n_shares = trial.suggest_int('n_shares', 1, 100) 
+
+            self.reset_strategy()
+            self.execute_trades(best=True, stop_loss=stop_loss_pct, take_profit=take_profit_pct, n_shares=n_shares)
+            final_strategy_value = self.strategy_value[-1]
+
+            return final_strategy_value
+
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=100)  # Ajustar el número de pruebas según sea necesario
+
+        # Mejores parámetros encontrados
+        best_params = study.best_params
+        print(f"Mejores parámetros encontrados: {best_params}")
+
+        # Aplicar los mejores parámetros a la estrategia
+        self.stop_loss_pct = best_params['stop_loss_pct']
+        self.take_profit_pct = best_params['take_profit_pct']
+        self.n_shares = best_params['n_shares']        
 
     def test(self):
         test_file_mapping = {
