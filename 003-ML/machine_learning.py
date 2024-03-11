@@ -46,8 +46,8 @@ class TradingStrategy:
         
         self.best_combination = None
         self.best_value = 0
-        self.stop_loss_pct = 0.95
-        self.take_profit_pct = 1.05
+        self.stop_loss = 0.95
+        self.take_profit = 1.05
         self.n_shares = 10        
         self.best_buylog_params = None
         self.best_selllog_params = None
@@ -300,8 +300,8 @@ class TradingStrategy:
 
     def execute_trades(self, best = False, stop_loss=None, take_profit=None, n_shares=None):
         
-        stop_loss = stop_loss_pct or self.stop_loss
-        take_profit = take_profit_pct or self.take_profit
+        stop_loss = stop_loss or self.stop_loss
+        take_profit = take_profit or self.take_profit
         n_shares = n_shares or self.n_shares
         
         if best == True:
