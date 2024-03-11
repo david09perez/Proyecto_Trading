@@ -335,7 +335,7 @@ class TradingStrategy:
             self.check_close_operations(row, stop_loss, take_profit, n_shares)
     
             # Actualiza el valor de la estrategia en cada iteración
-            total_value = self.cash + sum(self.calculate_operation_value(op, row['Close']) for op in self.operations if not op.closed, n_shares)
+            total_value = self.cash + sum(self.calculate_operation_value(op, row['Close'], n_shares) for op in self.operations if not op.closed)
             #print(f"Fila: {i}, Valor de la estrategia: {total_value}")
             self.strategy_value.append(total_value)
         
