@@ -90,16 +90,15 @@ class TradingStrategy:
         self.data.reset_index(drop=True, inplace=True)
         
         
-# Luis & Sofía
-
-        
-    def prepare_data_for_ml(self, train_size = 0.8):
+# Luis Robles
+   
+    def prepare_data_for_dl(self, train_size = 0.8):
         """
-        Prepares the data for machine learning models, creating training and test sets for buy and sell signals.
+        Prepares the data for deep learning models, creating training and test sets for buy and sell signals.
         """
 
         # Define the feature set X using price lags, volatility, returns, and spread
-        features = ['Pt-1', 'Pt-2', 'Pt-3', 'Volatility', 'Returns', 'Spread', 'Buy_Signal_xgb', 'Sell_Signal_xgb']
+        features = ['Pt-1', 'Pt-2', 'Pt-3', 'Volatility', 'Returns', 'Spread', 'Buy_Signal_dnn', 'Sell_Signal_dnn']
         self.X = self.data[features]
         
         # Determine the cutoff for the test set
@@ -107,75 +106,58 @@ class TradingStrategy:
 
         # Create a single DataFrame for the training set including both features and targets
         self.train_df = self.X.iloc[:cutoff]
-        self.X_train_xgb = self.train_df.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], errors = 'ignore', axis = 1)
-        self.Y_train_xgb_buy = self.train_df['Buy_Signal_xgb']
-        self.Y_train_xgb_sell = self.train_df['Sell_Signal_xgb']
+        self.X_train_dnn = self.train_df.drop(['Buy_Signal_dnn', 'Sell_Signal_dnn'], errors='ignore', axis=1)
+        self.Y_train_dnn_buy = self.train_df['Buy_Signal_dnn']
+        self.Y_train_dnn_sell = self.train_df['Sell_Signal_dnn']
 
         # Create a single DataFrame for the test set including both features and targets
         self.test_df = self.X.iloc[cutoff:]
-        self.X_test_xgb = self.test_df.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], errors = 'ignore', axis = 1)
-        self.Y_test_xgb_buy = self.test_df['Buy_Signal_xgb']
-        self.Y_test_xgb_sell = self.test_df['Sell_Signal_xgb']
+        self.X_test_dnn = self.test_df.drop(['Buy_Signal_dnn', 'Sell_Signal_dnn'], errors='ignore', axis=1)
+        self.Y_test_dnn_buy = self.test_df['Buy_Signal_dnn']
+        self.Y_test_dnn_sell = self.test_df['Sell_Signal_dnn']
         
- 
+    def build_and_train_dnn(self, X_train, X_test, y_train, y_test):
+        model = tf.keras.models.Sequential([
+            tf.keras.layers.Dense(units=50, activation='relu', input_shape=(6,)),
+            tf.keras.layers.Dense(units=100, activation='relu'),
+            tf.keras.layers.Dense(units=1, activation='linear')
+        ])
 
-    def fit_xgboost(self, direction='buy'):
-        """
-        Train an XGBoost model and find the best hyperparameters.
-        """
-        
-        # Select the correct training and validation datasets based on the direction
-        X_train = self.X_train_xgb
-        y_train = self.Y_train_xgb_buy if direction == 'buy' else self.Y_train_xgb_sell
-        X_val = self.X_test_xgb
-        y_val = self.Y_test_xgb_buy if direction == 'buy' else self.Y_test_xgb_sell
+        metric = tf.keras.metrics.RootMeanSquaredError()
+        model.compile(optimizer='adam',
+                      loss='mean_squared_error',
+                      metrics=[metric])
 
-        def objective_xgb(trial):
-           
-            booster = trial.suggest_categorical('booster', ['gbtree', 'gblinear', 'dart'])
+        model_hist = model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test))
 
-            param = {
-                'n_estimators': trial.suggest_int('n_estimators', 50, 400),
-                'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
-                'booster': booster,
-                'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 5.0),
-                'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 5.0),
-            }
-
-            if booster != 'gblinear':
-                param['max_depth'] = trial.suggest_int('max_depth', 3, 20)
-                param['max_leaves'] = trial.suggest_int('max_leaves', 0, 64)
-                param['gamma'] = trial.suggest_float('gamma', 0.0, 5.0)
-
-            model = XGBClassifier(**param, use_label_encoder=False, eval_metric='logloss')
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_val)
-            score = f1_score(y_val, y_pred, average='binary')
-            return score
+        return model, model_hist
         
         study = optuna.create_study(direction='maximize')
-        study.optimize(objective_xgb, n_trials=1)  # Adjust the number of trials as necessary
+        study.optimize(self.objective_dnn, n_trials=1)  # Adjust the number of trials as necessary
 
         # Store the best parameters
         if direction == 'buy':
-            self.best_xgbuy_params = study.best_params
+            self.best_dnn_buy_params = study.best_params
         elif direction == 'sell':
-            self.best_xgsell_params = study.best_params
+            self.best_dnn_sell_params = study.best_params
 
         # Train the best model on the full training dataset
         best_params = study.best_params
-        best_model = XGBClassifier(**best_params, use_label_encoder=False, eval_metric='logloss')
-        best_model.fit(X_train, y_train)
+        X_train = self.X_train_dnn.values
+        y_train = self.Y_train_dnn_buy.values if direction == 'buy' else self.Y_train_dnn_sell.values
+        X_test = self.X_test_dnn.values
+        y_test = self.Y_test_dnn_buy.values if direction == 'buy' else self.Y_test_dnn_sell.values
+
+        best_model, _ = self.build_and_train_dnn(X_train, X_test, y_train, y_test)
 
         # Generate predictions for the entire dataset
-        X_total = self.X.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], axis=1, errors = 'ignore')
-        predictions = best_model.predict(X_total)
+        predictions = best_model.predict(self.X.values)
 
         # Add predictions back to the dataset
         if direction == 'buy':
-            self.data['XGBoost_buy_signal'] = predictions
+            self.data['DNN_buy_signal'] = predictions
         elif direction == 'sell':
-            self.data['XGBoost_sell_signal'] = predictions  
+            self.data['DNN_sell_signal'] = predictions  
     
     #Zata y DArio    
     
