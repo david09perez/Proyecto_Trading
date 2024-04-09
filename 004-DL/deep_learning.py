@@ -82,8 +82,8 @@ class TradingStrategy:
         self.data['Pt-2'] = self.data['Close'].shift(2)
         self.data['Pt-3'] = self.data['Close'].shift(3)
         self.data['Future_Price'] = self.data['Close'].shift(-5)
-        self.data['Buy_Signal_xgb'] = (self.data['Close'] < self.data['Future_Price']).astype(int)
-        self.data['Sell_Signal_xgb'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
+        self.data['Buy_Signal_dnn'] = (self.data['Close'] < self.data['Future_Price']).astype(int)
+        self.data['Sell_Signal_dnn'] = (self.data['Close'] > self.data['Future_Price']).astype(int)
         
         self.data.dropna(inplace=True)
         
