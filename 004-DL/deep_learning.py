@@ -88,10 +88,7 @@ class TradingStrategy:
         self.data.dropna(inplace=True)
         
         self.data.reset_index(drop=True, inplace=True)
-        
-        
-# Luis y Sofía
-   
+
     def prepare_data_for_dl(self, train_size = 0.9):
         """
         Prepares the data for deep learning models, creating training and test sets for buy and sell signals.
@@ -140,137 +137,52 @@ class TradingStrategy:
         return model_hist
     
     def generate_predictions_dnn(self, model, direction = 'buy'):
-        
-        # Generate predictions for the entire dataset
         predictions = best_hist.predict(self.X.values)
 
-        # Add predictions back to the dataset
         if direction == 'buy':
-            self.data['DNN_buy_signal'] = predictions
+            self.data['Buy_Signal_dnn'] = predictions
         elif direction == 'sell':
-            self.data['DNN_sell_signal'] = predictions  
+            self.data['Sell_Signal_dnn'] = predictions   
             
-    #Zata y DArio    
-    
-    def fit_svm(self, direction='buy'):
-        """
-        Train an SVM model and find the best hyperparameters.
-        """
-        X_train = self.X_train_xgb
-        y_train = self.Y_train_xgb_buy if direction == 'buy' else self.Y_train_xgb_sell
-        X_val = self.X_test_xgb
-        y_val = self.Y_test_xgb_buy if direction == 'buy' else self.Y_test_xgb_sell
+    def build_and_train_lstm(self, direction='buy'):
+        # Preparar los datos para LSTM; necesitamos remodelarlos para [samples, time steps, features]
+        X_train = self.X_train_dnn.values.reshape((self.X_train_dnn.shape[0], 1, self.X_train_dnn.shape[1]))
+        y_train = self.Y_train_dnn_buy.values if direction == 'buy' else self.Y_train_dnn_sell.values
+        X_test = self.X_test_dnn.values.reshape((self.X_test_dnn.shape[0], 1, self.X_test_dnn.shape[1]))
+        y_test = self.Y_test_dnn_buy.values if direction == 'buy' else self.Y_test_dnn_sell.values
 
-        def objective_svm(trial):
-            
-            C = trial.suggest_float('C', 1e-6, 1e+6, log=True)
-            kernel = trial.suggest_categorical('kernel', ['linear', 'rbf', 'poly'])
-            gamma = 'scale' if kernel == 'linear' else trial.suggest_float('gamma', 1e-6, 1e+1, log=True)
-            model = SVC(C=C, kernel=kernel, gamma=gamma)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_val)
-            score = f1_score(y_val, y_pred, average='binary')
+        # Construir el modelo LSTM
+        inputs = tf.keras.Input(shape=(X_train.shape[1], X_train.shape[2]))
+        x = tf.keras.layers.LSTM(50, return_sequences=True)(inputs)
+        x = tf.keras.layers.LSTM(50)(x)
+        outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
 
-            return score
+        model = tf.keras.Model(inputs, outputs)
 
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective_svm, n_trials=1)  # Adjust the number of trials as necessary
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-        # Store the best parameters
+        # Entrenar el modelo
+        model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test), batch_size=32)
+
+        return model
+
+    def generate_predictions_lstm(self, model, direction='buy'):
+        # Preparar datos para predicciones
+        X = self.X.values.reshape((self.X.shape[0], 1, self.X.shape[1]))
+
+        # Generar predicciones
+        predictions = model.predict(X)
+
+        # Actualizar las señales de compra o venta en el DataFrame según las predicciones
         if direction == 'buy':
-            self.best_svmbuy_params = study.best_params
+            self.data['Buy_Signal_lstm'] = (predictions > 0.5).astype(int)
         elif direction == 'sell':
-            self.best_svmsell_params = study.best_params
-
-        # Train the best model on the full training dataset
-        best_params = study.best_params
-        best_model = SVC(**best_params)
-        best_model.fit(X_train, y_train)
-        
-        
-
-        # Generate predictions for the entire dataset
-        X_total = self.X.drop(['Buy_Signal_xgb', 'Sell_Signal_xgb'], axis=1, errors='ignore')
-        predictions = best_model.predict(X_total)
-
-        # Add predictions back to the dataset
-        if direction == 'buy':
-            self.data['SVM_buy_signal'] = predictions
-        elif direction == 'sell':
-            self.data['SVM_sell_signal'] = predictions
-
-         
-            
-    def prepare_data_for_log_model(self):
-        relevant_columns = ['Returns', 'Volatility', 'Close_Trend','Volume_Trend', 'Spread',  'LR_Buy_Signal', 'LR_Sell_Signal'] #,'RSI_buy_signal','Volume_Trend',
-       #'RSI_sell_signal', 'SMA_buy_signal', 'SMA_sell_signal','MACD_buy_signal', 'MACD_sell_signal', 'SAR_buy_signal',
-       #'SAR_sell_signal', 'ADX_buy_signal', 'ADX_sell_signal' ,'Spread','Open', 'High', 'Low', 'Close', ]
-        self.processed_data = self.data[relevant_columns]
-        split_idx = int(len(self.processed_data) * 0.75)
-        
-        self.vtrain_data = self.processed_data.iloc[:split_idx]
-        self.X_vtrain = self.vtrain_data.drop(['LR_Buy_Signal', 'LR_Sell_Signal'], errors='ignore', axis=1)
-        self.y_vtrain_buy = self.vtrain_data['LR_Buy_Signal']
-        self.y_vtrain_sell = self.vtrain_data['LR_Sell_Signal']
-        
-        self.vtest_data = self.processed_data.iloc[split_idx:]
-        self.X_vtest = self.vtest_data.drop(['LR_Buy_Signal', 'LR_Sell_Signal'], errors='ignore', axis=1)
-        self.y_vtest_buy = self.vtest_data['LR_Buy_Signal']
-        self.y_vtest_sell = self.vtest_data['LR_Sell_Signal']
-          
-            
-    def fit_logistic_regression(self, X_train, y_train, X_val, y_val, direction='buy'):
-
-        def objective(trial):
-            C = trial.suggest_float('C', 1e-6, 1e+6, log=True)
-            l1_ratio = trial.suggest_float('l1_ratio', 0, 1)
-            fit_intercept = trial.suggest_categorical('fit_intercept', [True, False])
-            
-            model = LogisticRegression(C=C, fit_intercept=fit_intercept, penalty='elasticnet', l1_ratio=l1_ratio, solver='saga', max_iter=10000)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_val)
-            score = f1_score(y_val, y_pred, average='binary')
-            
-            return score
-
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=1) 
-        
-        if direction == 'buy':
-            self.best_buylog_params = study.best_params
-        elif direction == 'sell':
-            self.best_selllog_params = study.best_params
-        
-        best_log_params = study.best_params
-
-        best_model = LogisticRegression(**best_log_params, penalty='elasticnet', solver='saga', max_iter=10_000)
-        best_model.fit(X_train, y_train)
-        signal_columns = ['LR_Buy_Signal', 'LR_Sell_Signal', 'Logistic_Buy_Signal', 'Logistic_Sell_Signal']
-        X_total = self.processed_data.drop(signal_columns, axis=1, errors='ignore') 
-        
-        predictions = best_model.predict(X_total)
-
-        if direction == 'buy':
-            self.data['Logistic_buy_signal'] = predictions
-        elif direction == 'sell':
-            self.data['Logistic_sell_signal'] = predictions
-
-        
-
+            self.data['Sell_Signal_lstm'] = (predictions < 0.5).astype(int)        
     def optimize_and_fit_models(self):
-        self.prepare_data_for_ml()
-        self.prepare_data_for_log_model()
+        self.prepare_data_for_dl()
         
-        self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_buy, self.X_vtest, self.y_vtest_buy, direction='buy')
-        self.fit_logistic_regression(self.X_vtrain, self.y_vtrain_sell, self.X_vtest, self.y_vtest_sell, direction='sell')
+        dnn_buy_model = build_and_train_dnn(direction = 'buy')
         
-        self.fit_xgboost(direction = 'buy')
-        self.fit_xgboost(direction = 'sell')
-        
-        self.fit_svm(direction = 'buy')
-        self.fit_svm(direction = 'sell')
- 
-
     def execute_trades(self, best = False, stop_loss=None, take_profit=None, n_shares=None):
         
         stop_loss = stop_loss or self.stop_loss
@@ -304,12 +216,8 @@ class TradingStrategy:
                 elif self.data.total_sell_signals.iloc[i] > (total_active_indicators / 2):
                     self._open_operation('short', row, stop_loss=stop_loss, take_profit=take_profit, n_shares=n_shares)
     
-            # Verifica y cierra operaciones basadas en stop_loss o take_profit
             self.check_close_operations(row, stop_loss, take_profit, n_shares)
-    
-            # Actualiza el valor de la estrategia en cada iteración
-            total_value = self.cash + sum(self.calculate_operation_value(op, row['Close'], n_shares) for op in self.operations if not op.closed)
-            #print(f"Fila: {i}, Valor de la estrategia: {total_value}")
+            total_value = self.cash + sum(self.calculate_operation_value(op, row['Close'], n_shares) for op in self.operations if not op.closed) 
             self.strategy_value.append(total_value)
         
 
@@ -326,8 +234,6 @@ class TradingStrategy:
             self.cash -= row['Close'] * n_shares * (1 + self.com)
         else:  # 'short'
             self.cash += row['Close'] * n_shares * (1 - self.com)  # Incrementa el efectivo al abrir la venta en corto
-            
-        #print(f"Operación {operation_type} iniciada en {row.name}, Precio: {row['Close']}, Cash restante: {self.cash}")
 
     def check_close_operations(self, row,stop_loss, take_profit, n_shares):
         for op in self.operations:
@@ -339,7 +245,6 @@ class TradingStrategy:
                     self.cash -= row['Close'] * n_shares * (1 + self.com)  # Decrementa el efectivo al cerrar la venta en corto, basado en el nuevo precio
                    
                 op.closed = True
-                #print(f"Operación {op.operation_type} cerrada en {row.name}, Precio: {row['Close']}, Cash resultante: {self.cash}")
 
     def calculate_operation_value(self, op, current_price, n_shares):
         if op.operation_type == 'long':
@@ -361,7 +266,7 @@ class TradingStrategy:
         plt.show()
         
     def run_combinations(self):
-        all_indicators = ['Logistic', 'XGBoost','SVM']
+        all_indicators = ['dnn', 'lstm','cnn']
         for r in range(1, len(all_indicators) + 1):
             for combo in combinations(all_indicators, r):
                 self.active_indicators = list(combo)
@@ -379,8 +284,7 @@ class TradingStrategy:
     def reset_strategy(self):
         self.operations.clear()
         self.cash = 1_000_000
-        self.strategy_value = [1_000_000]    
-        
+        self.strategy_value = [1_000_000]            
         
     def optimize_trade_parameters(self):
         def objective(trial):
