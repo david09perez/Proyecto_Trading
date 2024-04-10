@@ -92,7 +92,7 @@ class TradingStrategy:
         
 # Luis y Sofía
    
-    def prepare_data_for_dl(self, train_size = 0.8):
+    def prepare_data_for_dl(self, train_size = 0.9):
         """
         Prepares the data for deep learning models, creating training and test sets for buy and sell signals.
         """
@@ -116,49 +116,40 @@ class TradingStrategy:
         self.Y_test_dnn_buy = self.test_df['Buy_Signal_dnn']
         self.Y_test_dnn_sell = self.test_df['Sell_Signal_dnn']
         
-    def build_and_train_dnn(self, X_train, X_test, y_train, y_test):
+    def build_and_train_dnn(self, direction = 'buy'):
         model = tf.keras.models.Sequential([
             tf.keras.layers.Dense(units=50, activation='relu', input_shape=(6,)),
             tf.keras.layers.Dense(units=100, activation='relu'),
-            tf.keras.layers.Dense(units=1, activation='linear')
+            tf.keras.layers.Dense(units=1, activation='softmax')
         ])
 
         metric = tf.keras.metrics.RootMeanSquaredError()
         model.compile(optimizer='adam',
                       loss='mean_squared_error',
                       metrics=[metric])
-
-        model_hist = model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test))
-
-        return model, model_hist
         
-        study = optuna.create_study(direction='maximize')
-        study.optimize(self.objective_dnn, n_trials=1)  # Adjust the number of trials as necessary
-
-        # Store the best parameters
-        if direction == 'buy':
-            self.best_dnn_buy_params = study.best_params
-        elif direction == 'sell':
-            self.best_dnn_sell_params = study.best_params
-
         # Train the best model on the full training dataset
-        best_params = study.best_params
+      
         X_train = self.X_train_dnn.values
         y_train = self.Y_train_dnn_buy.values if direction == 'buy' else self.Y_train_dnn_sell.values
         X_test = self.X_test_dnn.values
         y_test = self.Y_test_dnn_buy.values if direction == 'buy' else self.Y_test_dnn_sell.values
 
-        best_model, _ = self.build_and_train_dnn(X_train, X_test, y_train, y_test)
+        model_hist = model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test))
 
+        return model_hist
+    
+    def generate_predictions_dnn(self, model, direction = 'buy'):
+        
         # Generate predictions for the entire dataset
-        predictions = best_model.predict(self.X.values)
+        predictions = best_hist.predict(self.X.values)
 
         # Add predictions back to the dataset
         if direction == 'buy':
             self.data['DNN_buy_signal'] = predictions
         elif direction == 'sell':
             self.data['DNN_sell_signal'] = predictions  
-    
+            
     #Zata y DArio    
     
     def fit_svm(self, direction='buy'):
