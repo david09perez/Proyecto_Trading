@@ -9,6 +9,7 @@ from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
+import tensorflow as tf
 
 class Operation:
     def __init__(self, operation_type, bought_at, timestamp, n_shares, stop_loss, take_profit):
@@ -159,20 +160,14 @@ class TradingStrategy:
         model = tf.keras.Model(inputs, outputs)
 
         model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-
-        # Entrenar el modelo
         model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test), batch_size=32)
 
         return model
 
     def generate_predictions_lstm(self, model, direction='buy'):
-        # Preparar datos para predicciones
         X = self.X.values.reshape((self.X.shape[0], 1, self.X.shape[1]))
-
-        # Generar predicciones
         predictions = model.predict(X)
 
-        # Actualizar las señales de compra o venta en el DataFrame según las predicciones
         if direction == 'buy':
             self.data['Buy_Signal_lstm'] = (predictions > 0.5).astype(int)
         elif direction == 'sell':
@@ -188,6 +183,10 @@ class TradingStrategy:
         dnn_sell_model = self.build_and_train_dnn(direction = 'sell')
         self.generate_predictions_dnn(dnn_buy_model, direction = 'sell')  
         
+        lstm_buy_model = self.build_and_train_lstm(direction = 'buy')
+        self.generate_predictions_lstm(lstm_buy_model, direction = 'buy')
+        lstm_sell_model = self.build_and_train_lstm(direction = 'sell')
+        self.generate_predictions_lstm(lstm_buy_model, direction = 'sell')
         
         
         
