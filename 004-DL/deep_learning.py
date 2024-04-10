@@ -122,8 +122,8 @@ class TradingStrategy:
 
         metric = tf.keras.metrics.RootMeanSquaredError()
         model.compile(optimizer='adam',
-                      loss='mean_squared_error',
-                      metrics=[metric])
+                      loss='categorical_crossentropy function',
+                      metrics=['accuracy'])
         
         # Train the best model on the full training dataset
       
@@ -145,13 +145,12 @@ class TradingStrategy:
             self.data['Sell_Signal_dnn'] = predictions   
             
     def build_and_train_lstm(self, direction='buy'):
-        # Preparar los datos para LSTM; necesitamos remodelarlos para [samples, time steps, features]
         X_train = self.X_train_dnn.values.reshape((self.X_train_dnn.shape[0], 1, self.X_train_dnn.shape[1]))
         y_train = self.Y_train_dnn_buy.values if direction == 'buy' else self.Y_train_dnn_sell.values
         X_test = self.X_test_dnn.values.reshape((self.X_test_dnn.shape[0], 1, self.X_test_dnn.shape[1]))
         y_test = self.Y_test_dnn_buy.values if direction == 'buy' else self.Y_test_dnn_sell.values
 
-        # Construir el modelo LSTM
+        
         inputs = tf.keras.Input(shape=(X_train.shape[1], X_train.shape[2]))
         x = tf.keras.layers.LSTM(50, return_sequences=True)(inputs)
         x = tf.keras.layers.LSTM(50)(x)
@@ -177,11 +176,20 @@ class TradingStrategy:
         if direction == 'buy':
             self.data['Buy_Signal_lstm'] = (predictions > 0.5).astype(int)
         elif direction == 'sell':
-            self.data['Sell_Signal_lstm'] = (predictions < 0.5).astype(int)        
+            self.data['Sell_Signal_lstm'] = (predictions < 0.5).astype(int)   
+            
+            
+            
     def optimize_and_fit_models(self):
         self.prepare_data_for_dl()
         
-        dnn_buy_model = build_and_train_dnn(direction = 'buy')
+        dnn_buy_model = self.build_and_train_dnn(direction = 'buy')
+        self.generate_predictions_dnn(dnn_buy_model, direction = 'buy')
+        dnn_sell_model = self.build_and_train_dnn(direction = 'sell')
+        self.generate_predictions_dnn(dnn_buy_model, direction = 'sell')  
+        
+        
+        
         
     def execute_trades(self, best = False, stop_loss=None, take_profit=None, n_shares=None):
         
