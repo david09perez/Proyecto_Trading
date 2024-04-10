@@ -145,6 +145,59 @@ class TradingStrategy:
         elif direction == 'sell':
             self.data['Sell_Signal_dnn'] = predictions   
             
+    def cnn_model(self, trial):
+        model = Sequential()
+        n_layers = trial.suggest_int('n_layers', 1, 3)
+        activation = trial.suggest_categorical('activation', ['relu', 'tanh', 'sigmoid'])
+
+        # Capa de entrada / primera capa convolucional con padding 'same'
+        model.add(Conv1D(filters=trial.suggest_int('filters_first', 16, 64),
+                         kernel_size=trial.suggest_int('kernel_size_first', 2, 6),
+                         activation=activation,
+                         input_shape=(self.X_train_dnn.shape[1], 1),
+                         padding='same'))
+        model.add(MaxPooling1D(2, padding='same'))
+
+        for i in range(n_layers - 1):
+            model.add(Conv1D(filters=trial.suggest_int(f'filters_{i+2}', 16, 64),
+                             kernel_size=trial.suggest_int(f'kernel_size_{i+2}', 2, 6),
+                             activation=activation,
+                             padding='same'))
+            model.add(MaxPooling1D(2, padding='same'))
+
+        model.add(Flatten())
+        model.add(Dense(trial.suggest_int('dense_units', 16, 64), activation=activation))
+        model.add(Dense(1, activation='sigmoid'))
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        return model
+
+
+    def optimize_cnn(self):
+        # Preparar los datos para el modelo CNN
+        self.prepare_data_for_dl()
+        # Remodelar los datos para Conv1D
+        X_train_reshaped = self.X_train_dnn.values.reshape(-1, self.X_train_dnn.shape[1], 1)
+        X_test_reshaped = self.X_test_dnn.values.reshape(-1, self.X_test_dnn.shape[1], 1)
+        
+        def objective(trial):
+            model = self.cnn_model(trial)
+            # Entrenamiento del modelo con los datos preparados
+            model.fit(X_train_reshaped, self.Y_train_dnn_buy, epochs=10, validation_split=0.1, verbose=0)
+            # Evaluación del modelo
+            loss, accuracy = model.evaluate(X_test_reshaped, self.Y_test_dnn_buy, verbose=0)
+            return accuracy
+        
+        study = optuna.create_study(direction='maximize')
+        study.optimize(objective, n_trials=10)  # Ajusta según tus necesidades
+        
+        # Imprimir los mejores hiperparámetros
+        best_params = study.best_params
+        print(f"Mejores hiperparámetros: {best_params}")
+        
+        # Opcional: Reentrenar el modelo con los mejores hiperparámetros encontrados
+        self.best_cnn_model = self.cnn_model(study.best_trial)
+        self.best_cnn_model.fit(X_train_reshaped, self.Y_train_dnn_buy, epochs=10, validation_split=0.1)
+        
     def build_and_train_lstm(self, direction='buy'):
         X_train = self.X_train_dnn.values.reshape((self.X_train_dnn.shape[0], 1, self.X_train_dnn.shape[1]))
         y_train = self.Y_train_dnn_buy.values if direction == 'buy' else self.Y_train_dnn_sell.values
