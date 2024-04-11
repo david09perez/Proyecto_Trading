@@ -9,7 +9,9 @@ from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
-import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
+
 
 class Operation:
     def __init__(self, operation_type, bought_at, timestamp, n_shares, stop_loss, take_profit):
