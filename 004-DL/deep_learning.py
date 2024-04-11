@@ -9,6 +9,7 @@ from sklearn.svm import SVC
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
+import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense
 
@@ -116,20 +117,17 @@ class TradingStrategy:
         self.Y_test_dnn_buy = self.test_df['Buy_Signal_dnn']
         self.Y_test_dnn_sell = self.test_df['Sell_Signal_dnn']
         
-    def build_and_train_dnn(self, direction = 'buy'):
+    def build_and_train_dnn(self, direction='buy'):
         model = tf.keras.models.Sequential([
-            tf.keras.layers.Dense(units=50, activation='relu', input_shape=(6,)),
+            tf.keras.layers.Dense(units=50, activation='relu', input_shape=(6,)),  
             tf.keras.layers.Dense(units=100, activation='relu'),
-            tf.keras.layers.Dense(units=1, activation='softmax')
+            tf.keras.layers.Dense(units=1, activation='sigmoid')  # Usando sigmoid para clasificación binaria
         ])
 
-        metric = tf.keras.metrics.RootMeanSquaredError()
         model.compile(optimizer='adam',
-                      loss='categorical_crossentropy function',
+                      loss='binary_crossentropy',  # Adecuado para clasificación binaria
                       metrics=['accuracy'])
-        
-        # Train the best model on the full training dataset
-      
+
         X_train = self.X_train_dnn.values
         y_train = self.Y_train_dnn_buy.values if direction == 'buy' else self.Y_train_dnn_sell.values
         X_test = self.X_test_dnn.values
@@ -137,68 +135,79 @@ class TradingStrategy:
 
         model_hist = model.fit(X_train, y_train, epochs=30, validation_data=(X_test, y_test))
 
-        return model_hist
+        return model
+
+
     
-    def generate_predictions_dnn(self, model, direction = 'buy'):
-        predictions = best_hist.predict(self.X.values)
+    def generate_predictions_dnn(self, model, direction='buy'):
+
+        X_for_prediction = self.X.drop(['Buy_Signal_dnn', 'Sell_Signal_dnn'], errors='ignore', axis=1).values
+        predictions = model.predict(X_for_prediction)
 
         if direction == 'buy':
-            self.data['Buy_Signal_dnn'] = predictions
+            self.data['dnn_Buy_Signal'] = (predictions > 0.5).astype(int)
         elif direction == 'sell':
-            self.data['Sell_Signal_dnn'] = predictions   
+            self.data['dnn_Sell_Signal'] = (predictions < 0.5).astype(int)
+        
             
-    def cnn_model(self, trial):
-        model = Sequential()
-        n_layers = trial.suggest_int('n_layers', 1, 3)
-        activation = trial.suggest_categorical('activation', ['relu', 'tanh', 'sigmoid'])
+    def build_and_train_cnn(self, direction='buy', params=None):
+        self.prepare_data_for_dl()
+        X_train_reshaped = self.X_train_dnn.values.reshape(-1, self.X_train_dnn.shape[1], 1)
+        y_train = self.Y_train_dnn_buy.values if direction == 'buy' else self.Y_train_dnn_sell.values
+        X_test_reshaped = self.X_test_dnn.values.reshape(-1, self.X_test_dnn.shape[1], 1)
+        y_test = self.Y_test_dnn_buy.values if direction == 'buy' else self.Y_test_dnn_sell.values
 
-        # Capa de entrada / primera capa convolucional con padding 'same'
-        model.add(Conv1D(filters=trial.suggest_int('filters_first', 16, 64),
-                         kernel_size=trial.suggest_int('kernel_size_first', 2, 6),
-                         activation=activation,
-                         input_shape=(self.X_train_dnn.shape[1], 1),
+        if params is None:
+            # Si params es None, usar un conjunto predeterminado de hiperparámetros
+            params = {
+                'filters_first': 32,
+                'kernel_size_first': 3,
+                'activation': 'relu',
+                'n_layers': 2,
+                'dense_units': 32,
+            }
+
+        # Define el modelo usando los hiperparámetros proporcionados o valores predeterminados
+        model = Sequential()
+        model.add(Conv1D(filters=params.get('filters_first', 32),
+                         kernel_size=params.get('kernel_size_first', 3),
+                         activation=params.get('activation', 'relu'),
+                         input_shape=(X_train_reshaped.shape[1], 1),
                          padding='same'))
         model.add(MaxPooling1D(2, padding='same'))
 
-        for i in range(n_layers - 1):
-            model.add(Conv1D(filters=trial.suggest_int(f'filters_{i+2}', 16, 64),
-                             kernel_size=trial.suggest_int(f'kernel_size_{i+2}', 2, 6),
-                             activation=activation,
+        for i in range(params.get('n_layers', 2) - 1):
+            model.add(Conv1D(filters=params.get(f'filters_{i+2}', 32),
+                             kernel_size=params.get(f'kernel_size_{i+2}', 3),
+                             activation=params.get('activation', 'relu'),
                              padding='same'))
             model.add(MaxPooling1D(2, padding='same'))
 
         model.add(Flatten())
-        model.add(Dense(trial.suggest_int('dense_units', 16, 64), activation=activation))
+        model.add(Dense(params.get('dense_units', 32), activation=params.get('activation', 'relu')))
         model.add(Dense(1, activation='sigmoid'))
         model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+
+        # Entrenar el modelo
+        model_hist = model.fit(X_train_reshaped, y_train, epochs=10, validation_data=(X_test_reshaped, y_test))
+
         return model
 
 
-    def optimize_cnn(self):
-        # Preparar los datos para el modelo CNN
-        self.prepare_data_for_dl()
-        # Remodelar los datos para Conv1D
-        X_train_reshaped = self.X_train_dnn.values.reshape(-1, self.X_train_dnn.shape[1], 1)
-        X_test_reshaped = self.X_test_dnn.values.reshape(-1, self.X_test_dnn.shape[1], 1)
+
+    def generate_predictions_cnn(self, model, direction='buy'):
         
-        def objective(trial):
-            model = self.cnn_model(trial)
-            # Entrenamiento del modelo con los datos preparados
-            model.fit(X_train_reshaped, self.Y_train_dnn_buy, epochs=10, validation_split=0.1, verbose=0)
-            # Evaluación del modelo
-            loss, accuracy = model.evaluate(X_test_reshaped, self.Y_test_dnn_buy, verbose=0)
-            return accuracy
-        
-        study = optuna.create_study(direction='maximize')
-        study.optimize(objective, n_trials=10)  # Ajusta según tus necesidades
-        
-        # Imprimir los mejores hiperparámetros
-        best_params = study.best_params
-        print(f"Mejores hiperparámetros: {best_params}")
-        
-        # Opcional: Reentrenar el modelo con los mejores hiperparámetros encontrados
-        self.best_cnn_model = self.cnn_model(study.best_trial)
-        self.best_cnn_model.fit(X_train_reshaped, self.Y_train_dnn_buy, epochs=10, validation_split=0.1)
+        X_for_prediction = self.X.drop(['Buy_Signal_dnn', 'Sell_Signal_dnn'], errors='ignore', axis=1).values
+        X_for_prediction_reshaped = X_for_prediction.reshape(-1, X_for_prediction.shape[1], 1)
+
+        predictions = model.predict(X_for_prediction_reshaped)
+
+        if direction == 'buy':
+            self.data['cnn_Buy_Signal'] = (predictions > 0.5).astype(int)
+        elif direction == 'sell':
+            self.data['cnn_Sell_Signal'] = (predictions > 0.5).astype(int)
+        return predictions
+
         
     def build_and_train_lstm(self, direction='buy'):
         X_train = self.X_train_dnn.values.reshape((self.X_train_dnn.shape[0], 1, self.X_train_dnn.shape[1]))
@@ -220,30 +229,36 @@ class TradingStrategy:
         return model
 
     def generate_predictions_lstm(self, model, direction='buy'):
-        X = self.X.values.reshape((self.X.shape[0], 1, self.X.shape[1]))
-        predictions = model.predict(X)
+        X_for_prediction = self.X.drop(['Buy_Signal_dnn', 'Sell_Signal_dnn'], errors='ignore', axis=1).values.reshape((self.X.shape[0], 1, self.X.shape[1] - 2))
+
+        predictions = model.predict(X_for_prediction)
 
         if direction == 'buy':
-            self.data['Buy_Signal_lstm'] = (predictions > 0.5).astype(int)
+            self.data['lstm_Buy_Signal'] = (predictions > 0.5).astype(int)
         elif direction == 'sell':
-            self.data['Sell_Signal_lstm'] = (predictions < 0.5).astype(int)   
-            
+            self.data['lstm_Sell_Signal'] = (predictions < 0.5).astype(int)
+
             
             
     def optimize_and_fit_models(self):
         self.prepare_data_for_dl()
-        
-        dnn_buy_model = self.build_and_train_dnn(direction = 'buy')
-        self.generate_predictions_dnn(dnn_buy_model, direction = 'buy')
-        dnn_sell_model = self.build_and_train_dnn(direction = 'sell')
-        self.generate_predictions_dnn(dnn_buy_model, direction = 'sell')  
-        
-        lstm_buy_model = self.build_and_train_lstm(direction = 'buy')
-        self.generate_predictions_lstm(lstm_buy_model, direction = 'buy')
-        lstm_sell_model = self.build_and_train_lstm(direction = 'sell')
-        self.generate_predictions_lstm(lstm_buy_model, direction = 'sell')
-        
-        
+
+        dnn_buy_model = self.build_and_train_dnn(direction='buy')
+        self.generate_predictions_dnn(dnn_buy_model, direction='buy')
+        dnn_sell_model = self.build_and_train_dnn(direction='sell')
+        self.generate_predictions_dnn(dnn_sell_model, direction='sell')  # Corregido para usar dnn_sell_model
+
+        lstm_buy_model = self.build_and_train_lstm(direction='buy')
+        self.generate_predictions_lstm(lstm_buy_model, direction='buy')
+        lstm_sell_model = self.build_and_train_lstm(direction='sell')
+        self.generate_predictions_lstm(lstm_sell_model, direction='sell')  # Corregido para usar lstm_sell_model
+
+     
+        cnn_buy_model = self.build_and_train_cnn(direction='buy')  # Entrena con los mejores hiperparámetros
+        self.generate_predictions_cnn(cnn_buy_model, direction='buy')
+        cnn_sell_model = self.build_and_train_cnn(direction='sell')
+        self.generate_predictions_cnn(cnn_sell_model, direction='sell')
+
         
     def execute_trades(self, best = False, stop_loss=None, take_profit=None, n_shares=None):
         
@@ -253,15 +268,15 @@ class TradingStrategy:
         
         if best == True:
             for indicator in self.best_combination:
-                self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.best_combination]].sum(axis=1)
-                self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.best_combination]].sum(axis=1)
+                self.data['total_buy_signals'] = self.data[[indicator + '_Buy_Signal' for indicator in self.best_combination]].sum(axis=1)
+                self.data['total_sell_signals'] = self.data[[indicator + '_Sell_Signal' for indicator in self.best_combination]].sum(axis=1)
                 total_active_indicators = len(self.best_combination)
             
                     
         else: #False
             for indicator in self.active_indicators:
-                self.data['total_buy_signals'] = self.data[[indicator + '_buy_signal' for indicator in self.active_indicators]].sum(axis=1)
-                self.data['total_sell_signals'] = self.data[[indicator + '_sell_signal' for indicator in self.active_indicators]].sum(axis=1)
+                self.data['total_buy_signals'] = self.data[[indicator + '_Buy_Signal' for indicator in self.active_indicators]].sum(axis=1)
+                self.data['total_sell_signals'] = self.data[[indicator + '_Sell_Signal' for indicator in self.active_indicators]].sum(axis=1)
                 total_active_indicators = len(self.active_indicators)
         
         for i, row in self.data.iterrows():
