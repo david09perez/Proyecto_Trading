@@ -7,6 +7,7 @@ from gymnasium.wrappers import AtariPreprocessing, FrameStack
 from technical_analysis import Operation, TradingStrategy
 import ta
 
+
 def calculate_indicators(self):
     # Lista de ventanas de tiempo para el cálculo de cada indicador
     rsi_windows = [5, 10, 14, 20, 25]
@@ -58,11 +59,89 @@ def calculate_indicators(self):
 
 
 
+class TradingEnv(gym.Env):
+    """Un ambiente de trading personalizado para Gymnasium."""
+    metadata = {'render.modes': ['human']}
 
+    def __init__(self, data, initial_balance=10000, transaction_cost=0.001):
+        super(TradingEnv, self).__init__()
 
+        self.data = data
+        self.initial_balance = initial_balance
+        self.transaction_cost = transaction_cost
+        self.current_step = 0
 
+        # Acciones del espacio: [0 = vender, 1 = mantener, 2 = comprar]
+        self.action_space = spaces.Discrete(3)
 
+        # Ejemplo de espacio de estado: saldo, cantidad de acciones poseídas, precio actual y algunos indicadores técnicos
+        self.observation_space = spaces.Box(low=0, high=np.inf, shape=(5,), dtype=np.float32)
 
+        self.reset()
+
+    def reset(self):
+        self.balance = self.initial_balance
+        self.net_worth = self.initial_balance
+        self.shares_held = 0
+        self.shares_bought = 0
+        self.shares_sold = 0
+        self.current_step = 0
+
+        return self._next_observation()
+
+    def step(self, action):
+        # Ejecuta una acción
+        self._take_action(action)
+        self.current_step += 1
+
+        done = self.current_step >= len(self.data) - 1
+        reward = self._calculate_reward()
+
+        obs = self._next_observation()
+
+        return obs, reward, done, {}
+
+    def _next_observation(self):
+        # Obtiene datos del siguiente paso
+        frame = np.append(self.data.iloc[self.current_step].values, [
+            self.balance,
+            self.shares_held
+        ])
+
+        return frame
+
+    def _take_action(self, action):
+        # Define cómo se deben manejar las acciones
+        current_price = self.data.iloc[self.current_step]['Close']
+
+        if action == 0:  # Vender
+            self._sell(current_price)
+        elif action == 2:  # Comprar
+            self._buy(current_price)
+
+    def _buy(self, price):
+        # Define lógica para comprar
+        if self.balance > price:
+            self.shares_bought = self.balance / price
+            self.shares_held += self.shares_bought
+            self.balance -= self.shares_bought * price
+            self.balance -= self.transaction_cost * (self.shares_bought * price)
+
+    def _sell(self, price):
+        # Define lógica para vender
+        if self.shares_held > 0:
+            self.shares_sold = self.shares_held
+            self.balance += self.shares_sold * price
+            self.shares_held = 0
+            self.balance -= self.transaction_cost * (self.shares_sold * price)
+
+    def _calculate_reward(self):
+        # Calcula la recompensa
+        return self.net_worth - self.initial_balance  # simple diferencia de valor neto
+
+    def render(self, mode='human', close=False):
+        # Renderiza el ambiente si es necesario
+        pass
 
 
 
